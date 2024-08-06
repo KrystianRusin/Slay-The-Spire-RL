@@ -1,0 +1,8 @@
+# Ignore spirecomm build directory
+spirecomm/build/
+./.ipynb_checkpoints
+Untitled.ipynb
+./build
+
+# Ignore venv directory
+venv/
