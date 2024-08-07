@@ -2,11 +2,15 @@ import gymnasium as gym
 import json
 import numpy as np
 from gymnasium import spaces
-import torch
-from torch.distributions.categorical import Categorical
+import tensorflow as tf
+from keras.models import Sequential
+from keras.layers import Dense, Flatten
+from keras.optimizers.legacy import Adam
+from rl.agents.dqn import DQNAgent
+from rl.policy import BoltzmannQPolicy
+from rl.memory import SequentialMemory
 
-# TODO Update step function so that it takes in the action and remove all the other bullshit from previous attempts at implementation
-# TODO Implement reward function
+#TODO Game loop
 
 class SlayTheSpireEnv(gym.Env):
     def __init__(self, initial_state):
@@ -14,8 +18,8 @@ class SlayTheSpireEnv(gym.Env):
 
         self.state = initial_state
         self.previous_state = None
-        self.current_command = None
-        self.current_args = {}
+        self.previous_action = None
+        self.curr_action = None
 
         # Define the available commands
         self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose']
@@ -226,12 +230,15 @@ class SlayTheSpireEnv(gym.Env):
         return self.state
 
     def step(self, action, game_state):
-        final_command = None
-        action_str = self.actions[action]
-
         # Update the game state with the new game_state provided
         self.previous_state = self.state
+        self.previous_action = self.curr_action
+
+        self.curr_action = action
         self.state = game_state
+
+        # Get the command based on the chosen action
+        command_str = self.actions[self.curr_action]
 
         reward = self.calculate_reward()
         done = self.check_if_done()
@@ -240,12 +247,48 @@ class SlayTheSpireEnv(gym.Env):
         self.current_command = None
         self.current_args = {}
 
-        return self.state, reward, done, {'final_command': final_command}
+        return self.state, reward, done, {'command': command_str}
 
     def calculate_reward(self):
-        # Calculate the reward for the current state
-        # This is a placeholder; implement the actual reward calculation logic
-        return 0
+        reward = 0
+        if self.previous_state and self.previous_action is not None:
+
+            # Reward for making a choice
+            previous_choices = self.previous_state['game_state'].get('choice_list', [])
+            current_choices = self.state['game_state'].get('choice_list', [])
+            
+            if previous_choices != current_choices:
+                reward += 5 
+            
+            # Reward for damaging monster and defeating a monster
+            previous_monsters = self.previous_state['game_state']['combat_state'].get('monsters', [])
+            current_monsters = self.state['game_state']['combat_state'].get('monsters', [])
+            for prev_monster, curr_monster in zip(previous_monsters, current_monsters):
+                if prev_monster['current_hp'] > curr_monster['current_hp']:
+                    reward += (prev_monster['current_hp'] - curr_monster['current_hp'])  # Reward for reducing monster health
+                if prev_monster['current_hp'] > 0 and curr_monster['current_hp'] <= 0:
+                    reward += 10
+
+            # Penalty for taking damage
+            previous_hp = self.previous_state['game_state']['player']['current_hp']
+            current_hp = self.state['game_state']['player']['current_hp']
+            if current_hp < previous_hp:
+                reward -= (previous_hp - current_hp)
+
+            # Reward for progressing to the next floor
+            if self.state['game_state']['floor'] > self.previous_state['game_state']['floor']:
+                reward += 20  # Reward for progressing to the next floor
+
+            # Reward for using a potion
+            if self.actions[self.previous_action].startswith('POTION'):
+                reward += 5  # Small reward for using a potion
+
+        return reward
+    
+    def check_if_done(self):
+        if self.state['game_state'].get('screen_type') == "GAME_OVER":
+            return True
+        return False
 
     def get_invalid_action_mask(self):
         # Initialize the mask to all False (all actions are initially valid)
@@ -351,7 +394,7 @@ class SlayTheSpireEnv(gym.Env):
 
     def apply_invalid_action_mask(self, logits):
         invalid_action_mask = self.get_invalid_action_mask()
-        adjusted_logits = torch.where(torch.tensor(invalid_action_mask, dtype=torch.bool), torch.tensor(-1e+8), logits)
+        adjusted_logits = np.where(invalid_action_mask, -1e8, logits)
         return adjusted_logits
     
     def print_action_space_with_validity(self):
@@ -360,24 +403,56 @@ class SlayTheSpireEnv(gym.Env):
             valid = not invalid_action_mask[idx]
             print(f"{action} - Valid: {valid}")
 
+class MaskedSlayTheSpireEnv(gym.Wrapper):
+    def __init__(self, env):
+        super(MaskedSlayTheSpireEnv, self).__init__(env)
+        self.action_space = spaces.Discrete(env.action_space.n)
+        self.observation_space = env.observation_space
+
+    def step(self, action, game_state):
+        state, reward, done, info = self.env.step(action, game_state)
+        invalid_action_mask = self.env.get_invalid_action_mask()
+        state['invalid_action_mask'] = invalid_action_mask
+        return state, reward, done, info
+
+class MaskedDQNAgent(DQNAgent):
+    def forward(self, observation):
+        state = observation[0]
+        masked_env = observation[1]
+        invalid_action_mask = masked_env.get('invalid_action_mask')
+        logits = self.model.predict(state[None])
+        masked_logits = masked_env.apply_invalid_action_mask(logits)
+        action = np.argmax(masked_logits)
+        return action
+
+def build_model(state_shape, nb_actions):
+    model = Sequential()
+    model.add(Flatten(input_shape=(1,) + state_shape))
+    model.add(Dense(24, activation='relu'))
+    model.add(Dense(24, activation='relu'))
+    model.add(Dense(nb_actions, activation='linear'))
+    return model
+
 def main():
     with open("game_state.json", 'r') as f:
         game_state = json.load(f)
 
     env = SlayTheSpireEnv(game_state)
+    env = MaskedSlayTheSpireEnv(env)
 
-    print("Full action space with validity:")
-    env.print_action_space_with_validity()
+    # Convert hierarchical observation space to a flat one
+    flat_state_shape = (sum([np.prod(space.shape) if isinstance(space, spaces.Box) else 1 for space in env.observation_space.spaces.values()]),)
 
-    # Example usage:
-    logits = torch.tensor([1.] * len(env.actions), requires_grad=True)
-    adjusted_logits = env.apply_invalid_action_mask(logits)
-    print("Adjusted logits:", adjusted_logits)
+    nb_actions = env.action_space.n
 
-    # Sample an action from the adjusted logits
-    action_dist = Categorical(logits=adjusted_logits)
-    action = action_dist.sample()
-    print("Selected action:", env.actions[action])
+    model = build_model(flat_state_shape, nb_actions)
+    policy = BoltzmannQPolicy()
+    memory = SequentialMemory(limit=50000, window_length=1)
+    dqn = MaskedDQNAgent(model=model, nb_actions=nb_actions, memory=memory, policy=policy,
+                         nb_steps_warmup=10, target_model_update=1e-2)
+
+    dqn.compile(Adam(lr=1e-3), metrics=['mae'])
+
 
 if __name__ == "__main__":
     main()
