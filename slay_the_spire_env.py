@@ -1,15 +1,6 @@
 import gymnasium as gym
-import json
 import numpy as np
 from gymnasium import spaces
-import tensorflow as tf
-from keras.models import Model
-from keras.layers import Dense, Flatten, Input, Concatenate, Embedding, LSTM
-from keras.optimizers.legacy import Adam
-from keras.preprocessing.text import Tokenizer
-from rl.agents.dqn import DQNAgent
-from rl.policy import BoltzmannQPolicy
-from rl.memory import SequentialMemory
 
 class SlayTheSpireEnv(gym.Env):
     def __init__(self, initial_state):
@@ -27,19 +18,17 @@ class SlayTheSpireEnv(gym.Env):
             "block": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
             "energy": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
             "orbs": spaces.MultiBinary(10),
-            "powers": spaces.MultiBinary(20)
         })
 
         card_space = spaces.Dict({
             "exhausts": spaces.Discrete(2),
             "is_playable": spaces.Discrete(2),
             "cost": spaces.Box(low=0, high=5, shape=(1,), dtype=np.float32),
-            "name": spaces.Discrete(378),  # One-hot encoded or discrete
-            "id": spaces.Discrete(378),  # One-hot encoded or discrete
-            "type": spaces.Discrete(5),  # One-hot encoded or discrete
+            "name": spaces.Discrete(378), 
+            "type": spaces.Discrete(5),  
             "ethereal": spaces.Discrete(2),
             "upgrades": spaces.Box(low=0, high=5, shape=(1,), dtype=np.float32),
-            "rarity": spaces.Discrete(6),  # One-hot encoded or discrete
+            "rarity": spaces.Discrete(6), 
             "has_target": spaces.Discrete(2)
         })
 
@@ -64,7 +53,6 @@ class SlayTheSpireEnv(gym.Env):
                 "current_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "block": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "id": spaces.Discrete(53),
-                "powers": spaces.MultiBinary(20)
             })] * 5)
         })
 
@@ -139,18 +127,40 @@ class SlayTheSpireEnv(gym.Env):
         return reward
 
     def check_if_done(self):
+        game_state = self.state.get("game_state", None)
+        if not game_state:
+            return False
         if self.state['game_state'].get('screen_type') == "GAME_OVER":
             return True
         return False
 
     def get_invalid_action_mask(self):
         invalid_action_mask = np.zeros(len(self.actions), dtype=bool)
+        
+        # Check if 'game_state' exists
+        game_state = self.state.get('game_state', None)
+        if not game_state:
+            # If game_state doesn't exist, all actions are invalid
+            return np.ones(len(self.actions), dtype=bool)
+
+        # Check if 'combat_state' exists
+        combat_state = game_state.get('combat_state', None)
+        if not combat_state:
+            # If combat_state doesn't exist, restrict combat-related actions
+            for i, action in enumerate(self.actions):
+                if action.startswith('PLAY'):
+                    invalid_action_mask[i] = True
+            return invalid_action_mask
+
+        # Process available commands
         available_commands = self.state.get('available_commands', [])
         for i, action in enumerate(self.actions):
             command = action.split()[0].lower()
             if command not in available_commands:
                 invalid_action_mask[i] = True
-        potions = self.state['game_state'].get('potions', [])
+
+        # Handle potion-related actions
+        potions = game_state.get('potions', [])
         for i, action in enumerate(self.actions):
             parts = action.split()
             if parts[0].lower() == 'potion':
@@ -171,43 +181,42 @@ class SlayTheSpireEnv(gym.Env):
                     continue
                 if not potion['requires_target'] and len(parts) == 4:
                     invalid_action_mask[i] = True
-        combat_state = self.state['game_state'].get('combat_state')
-        if not combat_state:
-            for i, action in enumerate(self.actions):
-                if action.startswith('PLAY'):
+
+        # Handle combat-related actions
+        hand = combat_state.get('hand', [])
+        monsters = combat_state.get('monsters', [])
+        valid_monster_indices = [i for i, monster in enumerate(monsters) if not monster['is_gone']]
+        for i, action in enumerate(self.actions):
+            parts = action.split()
+            if parts[0].lower() == 'play':
+                card_index = int(parts[1]) - 1
+                if card_index >= len(hand):
                     invalid_action_mask[i] = True
-        else:
-            hand = combat_state.get('hand', [])
-            monsters = combat_state.get('monsters', [])
-            valid_monster_indices = [i for i, monster in enumerate(monsters) if not monster['is_gone']]
-            for i, action in enumerate(self.actions):
-                parts = action.split()
-                if parts[0].lower() == 'play':
-                    card_index = int(parts[1]) - 1
-                    if card_index >= len(hand):
+                    continue
+                card = hand[card_index]
+                if not card['is_playable']:
+                    invalid_action_mask[i] = True
+                    continue
+                if card['has_target'] and len(parts) < 3:
+                    invalid_action_mask[i] = True
+                    continue
+                if not card['has_target'] and len(parts) == 3:
+                    invalid_action_mask[i] = True
+                    continue
+                if len(parts) == 3:
+                    target_index = int(parts[2])
+                    if target_index not in valid_monster_indices:
                         invalid_action_mask[i] = True
-                        continue
-                    card = hand[card_index]
-                    if not card['is_playable']:
-                        invalid_action_mask[i] = True
-                        continue
-                    if card['has_target'] and len(parts) < 3:
-                        invalid_action_mask[i] = True
-                        continue
-                    if not card['has_target'] and len(parts) == 3:
-                        invalid_action_mask[i] = True
-                        continue
-                    if len(parts) == 3:
-                        target_index = int(parts[2])
-                        if target_index not in valid_monster_indices:
-                            invalid_action_mask[i] = True
-        choice_list = self.state['game_state'].get('choice_list', [])
+
+        # Handle choice-related actions
+        choice_list = game_state.get('choice_list', [])
         for i, action in enumerate(self.actions):
             parts = action.split()
             if parts[0].lower() == 'choose':
                 choice_index = int(parts[1])
                 if choice_index >= len(choice_list):
                     invalid_action_mask[i] = True
+
         return invalid_action_mask
 
     def get_valid_actions(self):

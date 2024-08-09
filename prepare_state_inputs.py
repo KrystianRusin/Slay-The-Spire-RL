@@ -1,13 +1,23 @@
 import numpy as np
-from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer
+from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer, card_type_tokenizer, card_rarity_tokenizer
+
 
 def prepare_state_inputs(state):
     # Default values for missing data
-    default_card = [0, 0, 0, -1, -1, -1, 0, 0, -1, 0]
-    default_monster = [0, 0, 0, 0, 0, 0, -1, 0, 0] + [0] * 20  # Removed name and used monster ID
+    default_card = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+    default_monster = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
-    game_state = state.get('game_state', {})
-    combat_state = game_state.get('combat_state', {})
+    # Check if 'game_state' exists
+    game_state = state.get('game_state', None)
+    if not game_state:
+        # If game_state doesn't exist, return default inputs
+        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 11, 9)), np.zeros((1, 5, 10))]
+
+    # Check if 'combat_state' exists
+    combat_state = game_state.get('combat_state', None)
+    if not combat_state:
+        # If combat_state doesn't exist, return default inputs
+        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 11, 9)), np.zeros((1, 5, 10))]
 
     # Extract player state
     player_state = combat_state.get('player', None)
@@ -30,12 +40,11 @@ def prepare_state_inputs(state):
             card.get('exhausts', 0),
             card.get('is_playable', 0),
             card.get('cost', 0),
-            card_tokenizer.texts_to_sequences([card.get('id', '')])[0][0] if card.get('id', '') else 0,
-            card.get('id', 0),
-            card.get('type', 0),
+            card_tokenizer.texts_to_sequences([card.get('name', '')])[0][0] if card.get('name', '') else 0,
+            card_type_tokenizer.texts_to_sequences([card.get('type', '')])[0][0] if card.get('type', '') else 0,
             card.get('ethereal', 0),
             card.get('upgrades', 0),
-            card.get('rarity', 0),
+            card_rarity_tokenizer.texts_to_sequences([card.get('rarity', '')])[0][0] if card.get('rarity', '') else 0,
             card.get('has_target', 0)
         ]
     hand_input = np.array(hand_input).reshape(1, 10, -1)
@@ -48,12 +57,11 @@ def prepare_state_inputs(state):
             card.get('exhausts', 0),
             card.get('is_playable', 0),
             card.get('cost', 0),
-            card_tokenizer.texts_to_sequences([card.get('id', '')])[0][0] if card.get('id', '') else 0,
-            card.get('id', 0),
-            card.get('type', 0),
+            card_tokenizer.texts_to_sequences([card.get('name', '')])[0][0] if card.get('name', '') else 0,
+            card_type_tokenizer.texts_to_sequences([card.get('type', '')])[0][0] if card.get('type', '') else 0,
             card.get('ethereal', 0),
             card.get('upgrades', 0),
-            card.get('rarity', 0),
+            card_rarity_tokenizer.texts_to_sequences([card.get('rarity', '')])[0][0] if card.get('rarity', '') else 0,
             card.get('has_target', 0)
         ]
     deck_input = np.array(deck_input).reshape(1, len(deck_input), -1)
@@ -62,20 +70,13 @@ def prepare_state_inputs(state):
     monster_state = combat_state.get('monsters', [])
     monster_input = [default_monster] * 5
     for i, monster in enumerate(monster_state):
-        monster_powers = monster.get('powers', [0] * 20)
-        if len(monster_powers) < 20:
-            monster_powers = monster_powers + [0] * (20 - len(monster_powers))
-        elif len(monster_powers) > 20:
-            monster_powers = monster_powers[:20]
-
         monster_input[i] = [
             int(monster.get('is_gone', 0)), monster.get('move_hits', 0), monster.get('move_base_damage', 0),
             int(monster.get('half_dead', 0)), monster.get('move_adjusted_damage', 0), monster.get('max_hp', 0),
-            intent_tokenizer.texts_to_sequences([monster.get('intent', 'UNKNOWN')])[0][0] if monster.get('intent', 'UNKNOWN') else 0,
+            intent_tokenizer.texts_to_sequences([monster.get('intent', '')])[0][0] if monster.get('intent', '') else 0,
             monster_id_tokenizer.texts_to_sequences([monster.get('id', '')])[0][0] if monster.get('id', '') else 0,
             monster.get('current_hp', 0), monster.get('block', 0)
-        ] + monster_powers
-    
+        ]
     monster_input = np.array(monster_input).reshape(1, 5, -1)
 
     return [player_input, hand_input, deck_input, monster_input]

@@ -6,7 +6,7 @@ from build_model import build_model
 from prepare_state_inputs import prepare_state_inputs
 
 def main():
-    with open("game_state.json", 'r') as f:
+    with open("game_state_1722987625.json", 'r') as f:
         game_state = json.load(f)
 
     env = SlayTheSpireEnv(game_state)

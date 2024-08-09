@@ -65,11 +65,25 @@ card_names = [
 card_tokenizer = Tokenizer()
 card_tokenizer.fit_on_texts(card_names)
 
+card_types = ["ATTACK", "SKILL", "POWER", "STATUS", "CURSE"]
+
+# Initialize the tokenizer
+card_type_tokenizer = Tokenizer()
+card_type_tokenizer.fit_on_texts(card_types)
+
+# Define the card rarities
+card_rarities = ["BASIC", "SPECIAL", "COMMON", "UNCOMMON", "RARE", "CURSE"]
+
+# Initialize the tokenizer
+card_rarity_tokenizer = Tokenizer()
+card_rarity_tokenizer.fit_on_texts(card_rarities)
+
 intents = [
     "ATTACK", "ATTACK_BUFF", "ATTACK_DEBUFF", "ATTACK_DEFEND", "BUFF", "DEBUFF",
     "STRONG_DEBUFF", "DEBUG", "DEFEND", "DEFEND_DEBUFF", "DEFEND_BUFF", "ESCAPE",
     "MAGIC", "NONE", "SLEEP", "STUN", "UNKNOWN"
 ]
+
 
 # Initialize the intent tokenizer
 intent_tokenizer = Tokenizer()

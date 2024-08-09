@@ -6,17 +6,17 @@ def build_model(observation_space, nb_actions):
     player_input = Input(shape=(4,), name='player_input')  # current_hp, max_hp, block, energy, orbs, powers
     
     # Define input and processing for cards
-    card_input_shape = (10, 10)  # max 10 cards in hand, each card has 10 features
+    card_input_shape = (10, 9)  # max 10 cards in hand, each card has 10 features
     card_input = Input(shape=card_input_shape, name='card_input')
     card_flatten = Flatten()(card_input)
     
     # Define input and processing for sequences (deck, draw_pile, etc.)
-    deck_input_shape = (None, 10)  # variable size deck, each card has 10 features
+    deck_input_shape = (None, 9)  # variable size deck, each card has 10 features
     deck_input = Input(shape=deck_input_shape, name='deck_input')
     deck_lstm = LSTM(64)(deck_input)  # Process variable size deck with LSTM
     
     # Define input and processing for monsters
-    monster_input_shape = (5, 31)  # max 5 monsters, each monster has 13 features
+    monster_input_shape = (5, 10)  # max 5 monsters, each monster has 13 features
     monster_input = Input(shape=monster_input_shape, name='monster_input')
     monster_flatten = Flatten()(monster_input)
     
