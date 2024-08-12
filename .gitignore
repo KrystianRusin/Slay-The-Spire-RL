@@ -3,6 +3,7 @@ spirecomm/build/
 ./.ipynb_checkpoints
 Untitled.ipynb
 ./build
+./__pycache__
 
 # Ignore venv directory
 venv/
