@@ -64,13 +64,13 @@ class SlayTheSpireEnv(gym.Env):
             actions.append(f'START {player_class} 0')
         for use_discard in ['Use', 'Discard']:
             for potion_slot in range(5):
-                for target_index in range(8):
+                for target_index in range(5):
                     actions.append(f'POTION {use_discard} {potion_slot} {target_index}')
         for use_discard in ['Use', 'Discard']:
             for potion_slot in range(5):
                 actions.append(f'POTION {use_discard} {potion_slot}')
         for card_index in range(1, 10):
-            for target_index in range(8):
+            for target_index in range(5):
                 actions.append(f'PLAY {card_index} {target_index}')
         for card_index in range(1, 10):
             actions.append(f'PLAY {card_index}')
@@ -90,18 +90,40 @@ class SlayTheSpireEnv(gym.Env):
         return self.state
 
     def step(self, action, game_state):
+        # Store the current state and action as the previous ones for reference
         self.previous_state = self.state
         self.previous_action = self.curr_action
         self.curr_action = action
-        self.state = game_state
+
+        # Attempt to update the state with the new game state
+        if 'error' in game_state:
+            # If the new state is an error, retain the previous state
+            print("Error in game state detected. Retaining previous state.")
+            self.state = self.previous_state
+        else:
+            # Update to the new game state
+            self.state = game_state
+
+        # Get the command string corresponding to the current action
         command_str = self.actions[self.curr_action]
+
+        # Calculate the reward based on the action taken and state transition
         reward = self.calculate_reward()
+
+        # Check if the episode is done
         done = self.check_if_done()
+
+        # Clear the current command and arguments for the next step
         self.current_command = None
         self.current_args = {}
+
+        # Generate and update the invalid action mask for the current state
         invalid_action_mask = self.get_invalid_action_mask()
         self.state['invalid_action_mask'] = invalid_action_mask
+
+        # Return the updated state, reward, done flag, and the command string
         return self.state, reward, done, {command_str}
+
 
     def calculate_reward(self):
         reward = 0
@@ -271,5 +293,3 @@ class MaskedSlayTheSpireEnv(gym.Wrapper):
         invalid_action_mask = self.env.get_invalid_action_mask()
         state['invalid_action_mask'] = invalid_action_mask
         return state, reward, done, info
-
-

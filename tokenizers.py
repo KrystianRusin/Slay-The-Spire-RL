@@ -100,9 +100,20 @@ monster_ids = [
     "Chosen", "GremlinLeader", "Healer", "Mugger", "ShelledParasite", "SnakePlant", "Snecko", 
     "SphericGuardian", "TaskMaster", "TheCommector", "TorchHead", "AwakenedOne", "Darkling", "Deca", 
     "Donu", "Exploder", "GiantHead", "Maw", "Nemesis", "OrbWalker", "Reptomancer", "Repulsor", 
-    "SnakeDagger", "Spiker", "SpireGrowth", "TimeEater", "Transient", "WritingMass"
+    "SnakeDagger", "Spiker", "SpireGrowth", "TimeEater", "Transient", "WritingMass, FuzzyLouseDefensive, FuzzyLouseNormal"
 ]
 
 # Initialize the monster ID tokenizer
 monster_id_tokenizer = Tokenizer()
 monster_id_tokenizer.fit_on_texts(monster_ids)
+
+
+screen_types = [
+    "EVENT", "CHEST", "SHOP_ROOM", "REST", "CARD_REWARD", 
+    "COMBAT_REWARD", "MAP", "BOSS_REWARD", "SHOP_SCREEN", 
+    "GRID", "HAND_SELECT", "GAME_OVER", "COMPLETE", "NONE"
+]
+
+# Initialize the screen type tokenizer
+screen_type_tokenizer = Tokenizer()
+screen_type_tokenizer.fit_on_texts(screen_types)
