@@ -162,7 +162,7 @@ class SlayTheSpireEnv(gym.Env):
                     reward += 20
                 
                 # Additional reward for potion use
-                if self.actions[self.previous_action].startswith('POTION'):
+                if self.actions[self.previous_action].startswith('POTION Use'):
                     reward += 5
 
         return reward
