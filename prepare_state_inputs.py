@@ -1,6 +1,5 @@
 import numpy as np
-from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer, card_type_tokenizer, card_rarity_tokenizer
-
+from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer, card_type_tokenizer, card_rarity_tokenizer, screen_type_tokenizer
 
 def prepare_state_inputs(state):
     # Default values for missing data
@@ -11,29 +10,19 @@ def prepare_state_inputs(state):
     game_state = state.get('game_state', None)
     if not game_state:
         # If game_state doesn't exist, return default inputs
-        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 11, 9)), np.zeros((1, 5, 10))]
-
-    # Check if 'combat_state' exists
-    combat_state = game_state.get('combat_state', None)
-    if not combat_state:
-        # If combat_state doesn't exist, return default inputs
-        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 11, 9)), np.zeros((1, 5, 10))]
+        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 11, 9)), np.zeros((1, 5, 10)), np.zeros((1, 1))]
 
     # Extract player state
-    player_state = combat_state.get('player', None)
-    if player_state:
-        current_hp = player_state.get('current_hp', 0)
-        max_hp = player_state.get('max_hp', 0)
-        block = player_state.get('block', 0)
-        energy = player_state.get('energy', 0)
-    else:
-        current_hp = max_hp = block = energy = 0
+    player_state = game_state.get('player', None)
+    current_hp = player_state.get('current_hp', 0) if player_state else 0
+    max_hp = player_state.get('max_hp', 0) if player_state else 0
+    block = player_state.get('block', 0) if player_state else 0
+    energy = player_state.get('energy', 0) if player_state else 0
 
-    player_input = [current_hp, max_hp, block, energy]
-    player_input = np.array(player_input).reshape(1, -1)
+    player_input = np.array([current_hp, max_hp, block, energy]).reshape(1, -1)
 
     # Prepare hand input
-    hand_state = combat_state.get('hand', [])
+    hand_state = game_state.get('hand', [])
     hand_input = [default_card] * 10
     for i, card in enumerate(hand_state):
         hand_input[i] = [
@@ -67,7 +56,7 @@ def prepare_state_inputs(state):
     deck_input = np.array(deck_input).reshape(1, len(deck_input), -1)
 
     # Prepare monster input
-    monster_state = combat_state.get('monsters', [])
+    monster_state = game_state.get('monsters', [])
     monster_input = [default_monster] * 5
     for i, monster in enumerate(monster_state):
         monster_input[i] = [
@@ -79,4 +68,9 @@ def prepare_state_inputs(state):
         ]
     monster_input = np.array(monster_input).reshape(1, 5, -1)
 
-    return [player_input, hand_input, deck_input, monster_input]
+    # Prepare screen type input
+    screen_type = game_state.get('screen_type', 'NONE')
+    screen_type_input = screen_type_tokenizer.texts_to_sequences([screen_type])[0][0] if screen_type else 0
+    screen_type_input = np.array([screen_type_input]).reshape(1, 1)
+
+    return [player_input, hand_input, deck_input, monster_input, screen_type_input]

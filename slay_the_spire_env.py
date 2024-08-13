@@ -53,7 +53,8 @@ class SlayTheSpireEnv(gym.Env):
                 "current_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "block": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "id": spaces.Discrete(53),
-            })] * 5)
+            })] * 5),
+            "screen_type": spaces.Discrete(14)
         })
 
     
