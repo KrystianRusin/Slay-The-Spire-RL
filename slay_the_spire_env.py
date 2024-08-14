@@ -178,7 +178,7 @@ class SlayTheSpireEnv(gym.Env):
                     if prev_monster.get('current_hp', 0) > curr_monster.get('current_hp', 0):
                         reward += (prev_monster['current_hp'] - curr_monster['current_hp'])
                     if prev_monster.get('current_hp', 0) > 0 and curr_monster.get('current_hp', 0) <= 0:
-                        reward += 50
+                        reward += 40
 
                 # Penalty for taking damage
                 previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
@@ -203,6 +203,12 @@ class SlayTheSpireEnv(gym.Env):
                     playable_cards = [card for card in hand if card.get('is_playable')]
                     if playable_cards:
                         reward -= 10  # Apply a small penalty for ending the turn with playable cards
+                
+                # Reward for acquiring new relics
+                previous_relics = previous_game_state.get('relics', [])
+                current_relics = current_game_state.get('relics', [])
+                if len(current_relics) > len(previous_relics):
+                    reward += 50 
 
         return reward
 
