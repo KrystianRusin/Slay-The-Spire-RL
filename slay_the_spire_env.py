@@ -178,7 +178,7 @@ class SlayTheSpireEnv(gym.Env):
                     if prev_monster.get('current_hp', 0) > curr_monster.get('current_hp', 0):
                         reward += (prev_monster['current_hp'] - curr_monster['current_hp'])
                     if prev_monster.get('current_hp', 0) > 0 and curr_monster.get('current_hp', 0) <= 0:
-                        reward += 50
+                        reward += 40
 
                 # Penalty for taking damage
                 previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
@@ -208,7 +208,7 @@ class SlayTheSpireEnv(gym.Env):
                 previous_relics = previous_game_state.get('relics', [])
                 current_relics = current_game_state.get('relics', [])
                 if len(current_relics) > len(previous_relics):
-                    reward += 30  # Adjust the reward value as you see fit
+                    reward += 50  # Adjust the reward value as you see fit
 
                 # Reward/Penalty for gold changes
                 previous_gold = previous_game_state.get('gold', 0)
@@ -231,6 +231,13 @@ class SlayTheSpireEnv(gym.Env):
                         reward += 4.3
                     elif rarity == 'RARE':
                         reward += 10
+
+                # Reward for removing CURSE cards from the deck
+                previous_curse_count = sum(1 for card in previous_deck if card.get('rarity', '').upper() == 'CURSE')
+                current_curse_count = sum(1 for card in current_deck if card.get('rarity', '').upper() == 'CURSE')
+                if current_curse_count < previous_curse_count:
+                    reward += 15
+
 
         return reward
 
