@@ -172,7 +172,7 @@ class SlayTheSpireEnv(gym.Env):
                     if prev_monster.get('current_hp', 0) > curr_monster.get('current_hp', 0):
                         reward += (prev_monster['current_hp'] - curr_monster['current_hp'])
                     if prev_monster.get('current_hp', 0) > 0 and curr_monster.get('current_hp', 0) <= 0:
-                        reward += 10
+                        reward += 50
 
                 # Penalty for taking damage
                 previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
@@ -182,18 +182,21 @@ class SlayTheSpireEnv(gym.Env):
                 
                 # Check for floor progression
                 if current_game_state.get('floor', 0) > previous_game_state.get('floor', 0):
-                    reward += 20
+                    reward += 100
                 
                 # Additional reward for potion use
                 if self.actions[self.previous_action].startswith('POTION Use'):
                     reward += 5
+
+                if self.actions[self.previous_action].startswith('POTION Discard'):
+                    reward -= 5
 
                  # Penalize for ending the turn with playable cards
                 if self.actions[self.previous_action] == 'END':
                     hand = previous_combat_state.get('hand', [])
                     playable_cards = [card for card in hand if card.get('is_playable')]
                     if playable_cards:
-                        reward -= 5  # Apply a small penalty for ending the turn with playable cards
+                        reward -= 10  # Apply a small penalty for ending the turn with playable cards
 
         return reward
 
