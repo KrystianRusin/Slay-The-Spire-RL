@@ -7,3 +7,6 @@ __pycache__/
 
 # Ignore venv directory
 venv/
+
+# Ignore all .h5f files
+*.h5f
