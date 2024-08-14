@@ -178,7 +178,7 @@ class SlayTheSpireEnv(gym.Env):
                     if prev_monster.get('current_hp', 0) > curr_monster.get('current_hp', 0):
                         reward += (prev_monster['current_hp'] - curr_monster['current_hp'])
                     if prev_monster.get('current_hp', 0) > 0 and curr_monster.get('current_hp', 0) <= 0:
-                        reward += 40
+                        reward += 50
 
                 # Penalty for taking damage
                 previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
@@ -197,20 +197,43 @@ class SlayTheSpireEnv(gym.Env):
                 if self.actions[self.previous_action].startswith('POTION Discard'):
                     reward -= 5
 
-                 # Penalize for ending the turn with playable cards
+                # Penalize for ending the turn with playable cards
                 if self.actions[self.previous_action] == 'END':
                     hand = previous_combat_state.get('hand', [])
                     playable_cards = [card for card in hand if card.get('is_playable')]
                     if playable_cards:
                         reward -= 10  # Apply a small penalty for ending the turn with playable cards
-                
-                # Reward for acquiring new relics
+
+                # Reward for acquiring a relic
                 previous_relics = previous_game_state.get('relics', [])
                 current_relics = current_game_state.get('relics', [])
                 if len(current_relics) > len(previous_relics):
-                    reward += 50 
+                    reward += 30  # Adjust the reward value as you see fit
+
+                # Reward/Penalty for gold changes
+                previous_gold = previous_game_state.get('gold', 0)
+                current_gold = current_game_state.get('gold', 0)
+                gold_difference = current_gold - previous_gold
+                if gold_difference > 0:
+                    reward += (gold_difference / 10)  # 1 point for each 10 gold gained
+                elif gold_difference < 0:
+                    reward += (gold_difference * 0.05)  # -0.05 points for each gold lost
+
+                # Reward for adding a card to the deck
+                previous_deck = previous_game_state.get('deck', [])
+                current_deck = current_game_state.get('deck', [])
+                if len(current_deck) > len(previous_deck):
+                    new_card = current_deck[-1]  # Assuming the new card is added at the end
+                    rarity = new_card.get('rarity', 'COMMON').upper()  # Default to 'COMMON' if rarity is not found
+                    if rarity == 'COMMON':
+                        reward += 3
+                    elif rarity == 'UNCOMMON':
+                        reward += 4.3
+                    elif rarity == 'RARE':
+                        reward += 10
 
         return reward
+
 
 
     def check_if_done(self):
