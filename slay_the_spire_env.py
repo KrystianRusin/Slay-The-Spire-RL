@@ -17,7 +17,6 @@ class SlayTheSpireEnv(gym.Env):
         self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose', 'confirm', "leave"]
         self.action_space, self.actions = self.create_action_space()
 
-        # Define power space first
         power_space = spaces.Dict({
             "amount": spaces.Box(low=0, high=100, shape=(1,), dtype=np.float32),
             "just_applied": spaces.Discrete(2),
@@ -71,10 +70,6 @@ class SlayTheSpireEnv(gym.Env):
             "screen_type": spaces.Discrete(14)
         })
 
-    # Define the create_action_space function and other necessary methods here
-
-
-    
     def create_action_space(self):
         actions = []
         player_classes = ['IRONCLAD']
@@ -150,11 +145,11 @@ class SlayTheSpireEnv(gym.Env):
         
         if previous_game_state and current_game_state:
             if self.previous_action is not None:
-                # Check for choice list changes
-
+                # Penalty for proceed return loop (still need to figure out how to fix this loop)
                 if self.actions[self.previous_action] in ["PROCEED", "RETURN"] and self.actions[self.curr_action] == self.actions[self.previous_action]:
                     reward -= 1
 
+                # Reward for making a choice
                 previous_choices = previous_game_state.get('choice_list', [])
                 current_choices = current_game_state.get('choice_list', [])
                 if previous_choices != current_choices:
@@ -166,13 +161,14 @@ class SlayTheSpireEnv(gym.Env):
                 previous_monsters = previous_combat_state.get('monsters', [])
                 current_monsters = current_combat_state.get('monsters', [])
                 
+                # Reward for doing damage and defeating a monster
                 for prev_monster, curr_monster in zip(previous_monsters, current_monsters):
                     if prev_monster.get('current_hp', 0) > curr_monster.get('current_hp', 0):
                         reward += (prev_monster['current_hp'] - curr_monster['current_hp'])
                     if prev_monster.get('current_hp', 0) > 0 and curr_monster.get('current_hp', 0) <= 0:
                         reward += 10
 
-                # Check for player HP changes
+                # Penalty for taking damage
                 previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
                 current_hp = current_game_state.get('player', {}).get('current_hp', 0)
                 if current_hp < previous_hp:
@@ -220,6 +216,7 @@ class SlayTheSpireEnv(gym.Env):
             # If game_state doesn't exist, all actions are invalid
             return np.ones(len(self.actions), dtype=bool)
 
+        # Handle Potion actions
         potions = game_state.get('potions', [])
         for i, action in enumerate(self.actions):
             parts = action.split()
@@ -239,11 +236,9 @@ class SlayTheSpireEnv(gym.Env):
                 if not potion['can_discard'] and use_discard == 1:
                     invalid_action_mask[i] = True
                     continue
-
-                # New logic: handle target validation for potions
                 if potion['requires_target']:
                     if len(parts) < 4:
-                        invalid_action_mask[i] = True  # No target provided
+                        invalid_action_mask[i] = True
                         continue
                     
                     target_index = int(parts[3])
