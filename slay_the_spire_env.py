@@ -278,6 +278,8 @@ class SlayTheSpireEnv(gym.Env):
                 for i, action in enumerate(self.actions):
                     if action.split()[0].lower() == 'return':
                         invalid_action_mask[i] = True
+                    if action.split()[0].lower() == 'leave':
+                        invalid_action_mask[i] = True
 
         # Handle combat-related actions
         combat_state = game_state.get('combat_state', None)
