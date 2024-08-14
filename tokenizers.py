@@ -141,3 +141,10 @@ powers = [
 
 power_tokenizer = Tokenizer()
 power_tokenizer.fit_on_texts(powers)
+
+# List of all possible map symbols
+map_symbols = ["?", "$", "T", "M", "E", "R"]
+
+# Initialize the tokenizer for map symbols
+map_symbol_tokenizer = Tokenizer()
+map_symbol_tokenizer.fit_on_texts(map_symbols)

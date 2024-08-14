@@ -39,7 +39,7 @@ def main():
 
     # Setup the DQN agent
     memory = SequentialMemory(limit=50000, window_length=1)
-    policy = EpsGreedyQPolicy(eps=0.1)  # Start with full exploration
+    policy = EpsGreedyQPolicy(eps=0.75)  # Start with full exploration
     agent = MaskedDQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=1000, target_model_update=1e-2, policy=policy)
     agent.compile(Adam(learning_rate=1e-3), metrics=['mae'])
 
@@ -90,7 +90,7 @@ def main():
 
             # Prepare the state inputs for the model
             state_inputs = prepare_state_inputs(env.state)
-            time.sleep(1.0)
+            time.sleep(0.5)
 
             # Use the DQN agent to select an action
             action = agent.forward({'state': state_inputs, 'invalid_action_mask': env.get_invalid_action_mask()})

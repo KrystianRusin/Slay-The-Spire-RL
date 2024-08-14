@@ -1,16 +1,17 @@
 import numpy as np
-from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer, card_type_tokenizer, card_rarity_tokenizer, screen_type_tokenizer
+from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer, card_type_tokenizer, card_rarity_tokenizer, screen_type_tokenizer, map_symbol_tokenizer
 
 def prepare_state_inputs(state):
     # Default values for missing data
     default_card = [0, 0, 0, 0, 0, 0, 0, 0, 0]
     default_monster = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    default_map_room = [0, 0, 0, 0, 0, 0]  # For symbol, x, y, child_x, child_y, is_current_room
 
     # Check if 'game_state' exists
     game_state = state.get('game_state', None)
     if not game_state:
         # If game_state doesn't exist, return default inputs
-        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 11, 9)), np.zeros((1, 5, 10)), np.zeros((1, 1))]
+        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 1, 9)), np.zeros((1, 5, 10)), np.zeros((1, 51, 6)), np.zeros((1, 1))]
 
     # Extract player state
     player_state = game_state.get('player', None)
@@ -40,20 +41,22 @@ def prepare_state_inputs(state):
 
     # Prepare deck input
     deck_state = game_state.get('deck', [])
-    deck_input = [default_card] * len(deck_state)
-    for i, card in enumerate(deck_state):
-        deck_input[i] = [
-            card.get('exhausts', 0),
-            card.get('is_playable', 0),
-            card.get('cost', 0),
-            card_tokenizer.texts_to_sequences([card.get('name', '')])[0][0] if card.get('name', '') else 0,
-            card_type_tokenizer.texts_to_sequences([card.get('type', '')])[0][0] if card.get('type', '') else 0,
-            card.get('ethereal', 0),
-            card.get('upgrades', 0),
-            card_rarity_tokenizer.texts_to_sequences([card.get('rarity', '')])[0][0] if card.get('rarity', '') else 0,
-            card.get('has_target', 0)
-        ]
-    deck_input = np.array(deck_input).reshape(1, len(deck_input), -1)
+    if len(deck_state) == 0:
+        deck_input = np.zeros((1, 1, 9))  # Handle empty deck case
+    else:
+        deck_input = np.zeros((1, len(deck_state), 9))  # Allocate space based on actual deck size
+        for i, card in enumerate(deck_state):
+            deck_input[0, i] = [
+                card.get('exhausts', 0),
+                card.get('is_playable', 0),
+                card.get('cost', 0),
+                card_tokenizer.texts_to_sequences([card.get('name', '')])[0][0] if card.get('name', '') else 0,
+                card_type_tokenizer.texts_to_sequences([card.get('type', '')])[0][0] if card.get('type', '') else 0,
+                card.get('ethereal', 0),
+                card.get('upgrades', 0),
+                card_rarity_tokenizer.texts_to_sequences([card.get('rarity', '')])[0][0] if card.get('rarity', '') else 0,
+                card.get('has_target', 0)
+            ]
 
     # Prepare monster input
     monster_state = game_state.get('monsters', [])
@@ -73,4 +76,25 @@ def prepare_state_inputs(state):
     screen_type_input = screen_type_tokenizer.texts_to_sequences([screen_type])[0][0] if screen_type else 0
     screen_type_input = np.array([screen_type_input]).reshape(1, 1)
 
-    return [player_input, hand_input, deck_input, monster_input, screen_type_input]
+    # Prepare map input
+    map_state = game_state.get('map', [])
+    map_input = [default_map_room] * 51
+    for i, room in enumerate(map_state[:51]):  # Only consider the first 51 rooms
+        symbol = room.get('symbol', '')
+        room_symbol_sequence = map_symbol_tokenizer.texts_to_sequences([symbol])
+
+        if len(room_symbol_sequence) > 0 and len(room_symbol_sequence[0]) > 0:
+            room_symbol = room_symbol_sequence[0][0]
+        else:
+            room_symbol = 0  # Default to 0 if the symbol is not recognized or not tokenized
+
+        room_x = room.get('x', 0)
+        room_y = room.get('y', 0)
+        child_x = room.get('children', [{}])[0].get('x', 0)  # Default to 0 if no children or no x
+        child_y = room.get('children', [{}])[0].get('y', 0)  # Default to 0 if no children or no y
+        is_current_room = 1 if i == len(map_state) - 1 else 0  # Last room in the list might be the current room
+        map_input[i] = [room_symbol, room_x, room_y, child_x, child_y, is_current_room]
+
+    map_input = np.array(map_input).reshape(1, 51, -1)
+
+    return [player_input, hand_input, deck_input, monster_input, map_input, screen_type_input]

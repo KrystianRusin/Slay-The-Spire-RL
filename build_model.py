@@ -22,9 +22,14 @@ def build_model(observation_space, nb_actions):
     
     # Define input for screen type
     screen_type_input = Input(shape=(1,), name='screen_type_input')
+    
+    # Define input and processing for the map
+    map_input_shape = (51, 6)  # max 51 rooms, each room has 6 features (symbol, x, y, child_x, child_y, is_current_room)
+    map_input = Input(shape=map_input_shape, name='map_input')
+    map_flatten = Flatten()(map_input)
 
     # Concatenate all processed inputs
-    concatenated = Concatenate()([player_input, card_flatten, deck_lstm, monster_flatten, screen_type_input])
+    concatenated = Concatenate()([player_input, card_flatten, deck_lstm, monster_flatten, map_flatten, screen_type_input])
     
     # Fully connected layers
     dense1 = Dense(256, activation='relu')(concatenated)
@@ -32,7 +37,7 @@ def build_model(observation_space, nb_actions):
     output = Dense(nb_actions, activation='linear')(dense2)
     
     # Create the model
-    model = Model(inputs=[player_input, card_input, deck_input, monster_input, screen_type_input], outputs=output)
+    model = Model(inputs=[player_input, card_input, deck_input, monster_input, map_input, screen_type_input], outputs=output)
     model.compile(optimizer='adam', loss='mse')
     
     return model

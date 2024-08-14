@@ -46,6 +46,14 @@ class SlayTheSpireEnv(gym.Env):
 
         hand_space = spaces.Tuple([card_space] * 10)
 
+        map_node_space = spaces.Dict({
+            "symbol": spaces.Discrete(6),  # ?, $, T, M, E, R represented by 0-5
+            "x": spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32),
+            "y": spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32),
+            "children": spaces.Tuple([spaces.Tuple([spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32), 
+                                                   spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32)])] * 3)  # Max 3 children nodes per node
+        })
+
         self.observation_space = spaces.Dict({
             "player": player_space,
             "hand": spaces.Tuple([hand_space] * 10),
@@ -67,6 +75,7 @@ class SlayTheSpireEnv(gym.Env):
                 "id": spaces.Discrete(53),
                 "powers": spaces.Tuple([power_space] * 10),
             })] * 5),
+            "map": spaces.Tuple([map_node_space] * 51),
             "screen_type": spaces.Discrete(14)
         })
 
@@ -145,9 +154,6 @@ class SlayTheSpireEnv(gym.Env):
         
         if previous_game_state and current_game_state:
             if self.previous_action is not None:
-                # Penalty for proceed return loop (still need to figure out how to fix this loop)
-                if self.actions[self.previous_action] in ["PROCEED", "RETURN"] and self.actions[self.curr_action] == self.actions[self.previous_action]:
-                    reward -= 1
 
                 # Reward for making a choice
                 previous_choices = previous_game_state.get('choice_list', [])
@@ -261,6 +267,14 @@ class SlayTheSpireEnv(gym.Env):
                     choice_index = int(parts[1])
                     if choice_index >= len(choice_list):
                         invalid_action_mask[i] = True
+        
+        # Prevent "RETURN" action immediately after "PROCEED"
+        if self.previous_action is not None:
+            previous_command = self.actions[self.previous_action].split()[0].lower()
+            if previous_command == 'proceed':
+                for i, action in enumerate(self.actions):
+                    if action.split()[0].lower() == 'return':
+                        invalid_action_mask[i] = True
 
         # Handle combat-related actions
         combat_state = game_state.get('combat_state', None)
@@ -295,6 +309,8 @@ class SlayTheSpireEnv(gym.Env):
                     target_index = int(parts[2])
                     if target_index not in valid_monster_indices:
                         invalid_action_mask[i] = True
+
+        
 
         return invalid_action_mask
 
