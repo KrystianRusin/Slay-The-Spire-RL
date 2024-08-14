@@ -29,7 +29,7 @@ This project implements an AI agent to play the game *Slay the Spire* using Deep
 
    ```bash
    git clone https://github.com/KrystianRusin/slAI_the_spire.git
-   cd slAI_the_spire
+   cd Slay-The-Spire-RL
 
 2. Install Necessary Dependencies
 
