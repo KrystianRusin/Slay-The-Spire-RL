@@ -14,6 +14,8 @@ This project implements an AI agent to play the game *Slay the Spire* using Deep
 
 - **Learning Optimizations**: Although the agent can learn, the reward system needs to be expanded on so that good actions are appropriately rewarded
 - **Expand Observation Space**: Other input features such as the map layout need to be incorporated into the observation space which gives the model a better understanding out routing in game
+- **Add support for other classes**: Currently the model can only use the class Ironclad for simplicity, however there are 4 total classes which each play differently and have their own unique traits and playstyles.
+- **Performance Metrics need to be recorded and displayed**: Keeping track of performance through metrics such as cumulative reward, episode length, among other performance validation metrics need to be added
 
 ## Getting Started
 
