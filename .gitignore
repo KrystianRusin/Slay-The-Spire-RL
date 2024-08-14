@@ -9,4 +9,5 @@ __pycache__/
 venv/
 
 # Ignore all .h5f files
-*.h5f
+dqn_weights.h5f.index
+dqn_weights.h5f.data-00000-of-00001

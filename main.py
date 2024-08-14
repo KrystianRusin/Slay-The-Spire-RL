@@ -65,7 +65,7 @@ def main():
     model.summary()
 
     memory = SequentialMemory(limit=50000, window_length=1)
-    policy = EpsGreedyQPolicy(eps=0.75)
+    policy = EpsGreedyQPolicy(eps=0.85)
     agent = MaskedDQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=1000, target_model_update=1e-2, policy=policy)
     agent.compile(Adam(learning_rate=1e-3), metrics=['mae'])
 
@@ -112,8 +112,8 @@ def main():
         episode_lengths.append(episode_length)
 
         # Save the performance metrics for even-numbered episodes only
-        if len(episode_rewards) % 2 == 0:
-            save_metrics(episode_rewards, rolling_avg_rewards, episode_lengths)
+        #if len(episode_rewards) % 2 == 1:
+        save_metrics(episode_rewards, rolling_avg_rewards, episode_lengths)
 
         print("Starting a new episode...")
         agent.save_weights(WEIGHTS_FILE, overwrite=True)
