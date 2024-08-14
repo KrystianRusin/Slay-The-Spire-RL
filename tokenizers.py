@@ -148,3 +148,45 @@ map_symbols = ["?", "$", "T", "M", "E", "R"]
 # Initialize the tokenizer for map symbols
 map_symbol_tokenizer = Tokenizer()
 map_symbol_tokenizer.fit_on_texts(map_symbols)
+
+
+from keras.preprocessing.text import Tokenizer
+
+# Complete list of all possible relics
+relics_list = [
+    "Burning Blood", "Cracked Core", "Pure Water", "Ring of the Snake", "Akabeko", "Anchor",
+    "Ancient Tea Set", "Art of War", "Bag of Marbles", "Bag of Preparation", "Blood Vial", 
+    "Bronze Scales", "Centennial Puzzle", "Ceramic Fish", "Damaru", "Data Disk", "Dream Catcher", 
+    "Happy Flower", "Juzu Bracelet", "Lantern", "Maw Bank", "Meal Ticket", "Nunchaku", 
+    "Oddly Smooth Stone", "Omamori", "Orichalcum", "Pen Nib", "Potion Belt", "Preserved Insect", 
+    "Red Skull", "Regal Pillow", "Smiling Mask", "Snecko Skull", "Strawberry", "The Boot", 
+    "Tiny Chest", "Toy Ornithopter", "Vajra", "War Paint", "Whetstone", "Blue Candle", 
+    "Bottled Flame", "Bottled Lightning", "Bottled Tornado", "Darkstone Periapt", "Duality", 
+    "Eternal Feather", "Frozen Egg", "Gold-Plated Cables", "Gremlin Horn", "Horn Cleat", 
+    "Ink Bottle", "Kunai", "Letter Opener", "Matryoshka", "Meat on the Bone", "Mercury Hourglass", 
+    "Molten Egg", "Mummified Hand", "Ninja Scroll", "Ornamental Fan", "Pantograph", "Paper Krane", 
+    "Paper Phrog", "Pear", "Question Card", "Self-Forming Clay", "Shuriken", "Singing Bowl", 
+    "Strike Dummy", "Sundial", "Symbiotic Virus", "Teardrop Locket", "The Courier", "Toxic Egg", 
+    "White Beast Statue", "Bird-Faced Urn", "Calipers", "Captain's Wheel", "Champion Belt", 
+    "Charon's Ashes", "Cloak Clasp", "Dead Branch", "Du-Vu Doll", "Emotion Chip", "Fossilized Helix", 
+    "Gambling Chip", "Ginger", "Girya", "Golden Eye", "Ice Cream", "Incense Burner", "Lizard Tail", 
+    "Magic Flower", "Mango", "Old Coin", "Peace Pipe", "Pocketwatch", "Prayer Wheel", "Shovel", 
+    "Stone Calendar", "The Specimen", "Thread and Needle", "Tingsha", "Torii", "Tough Bandages", 
+    "Tungsten Rod", "Turnip", "Unceasing Top", "Wing Boots", "Astrolabe", "Black Blood", "Black Star", 
+    "Busted Crown", "Calling Bell", "Coffee Dripper", "Cursed Key", "Ectoplasm", "Empty Cage", 
+    "Frozen Core", "Fusion Hammer", "Holy Water", "Hovering Kite", "Inserter", "Mark of Pain", 
+    "Nuclear Battery", "Pandora's Box", "Philosopher's Stone", "Ring of the Serpent", "Runic Cube", 
+    "Runic Dome", "Runic Pyramid", "Sacred Bark", "Slaver's Collar", "Snecko Eye", "Sozu", 
+    "Tiny House", "Velvet Choker", "Violet Lotus", "Wrist Blade", "Brimstone", "Cauldron", 
+    "Chemical X", "Clockwork Souvenir", "Dolly's Mirror", "Frozen Eye", "Hand Drill", 
+    "Lee's Waffle", "Medical Kit", "Melange", "Membership Card", "Orange Pellets", "Orrery", 
+    "Prismatic Shard", "Runic Capacitor", "Sling of Courage", "Strange Spoon", "The Abacus", 
+    "Toolbox", "Twisted Funnel", "Bloody Idol", "Cultist Headpiece", "Enchiridion", "Face Of Cleric", 
+    "Golden Idol", "Gremlin Visage", "Mark of the Bloom", "Mutagenic Strength", "N'loth's Gift", 
+    "N'loth's Hungry Face", "Necronomicon", "Neow's Lament", "Nilry's Codex", "Odd Mushroom", 
+    "Red Mask", "Spirit Poop", "Ssserpent Head", "Warped Tongs"
+]
+
+# Initialize the tokenizer for relics
+relic_tokenizer = Tokenizer()
+relic_tokenizer.fit_on_texts(relics_list)

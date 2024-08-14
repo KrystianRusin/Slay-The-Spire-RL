@@ -1,17 +1,18 @@
 import numpy as np
-from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer, card_type_tokenizer, card_rarity_tokenizer, screen_type_tokenizer, map_symbol_tokenizer
+from tokenizers import card_tokenizer, intent_tokenizer, monster_id_tokenizer, card_type_tokenizer, card_rarity_tokenizer, screen_type_tokenizer, map_symbol_tokenizer, relic_tokenizer
 
 def prepare_state_inputs(state):
     # Default values for missing data
     default_card = [0, 0, 0, 0, 0, 0, 0, 0, 0]
     default_monster = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     default_map_room = [0, 0, 0, 0, 0, 0]  # For symbol, x, y, child_x, child_y, is_current_room
+    default_relic = [0, -1]
 
     # Check if 'game_state' exists
     game_state = state.get('game_state', None)
     if not game_state:
         # If game_state doesn't exist, return default inputs
-        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 1, 9)), np.zeros((1, 5, 10)), np.zeros((1, 51, 6)), np.zeros((1, 1))]
+        return [np.zeros((1, 4)), np.zeros((1, 10, 9)), np.zeros((1, 1, 9)), np.zeros((1, 5, 10)), np.zeros((1, 51, 6)), np.zeros((1, 1)), np.zeros((1, 1, 2))]
 
     # Extract player state
     player_state = game_state.get('player', None)
@@ -97,4 +98,16 @@ def prepare_state_inputs(state):
 
     map_input = np.array(map_input).reshape(1, 51, -1)
 
-    return [player_input, hand_input, deck_input, monster_input, map_input, screen_type_input]
+    # Prepare relics input
+    relic_state = game_state.get('relics', [])
+    if len(relic_state) == 0:
+        relic_input = np.zeros((1, 1, 2))  # Handle empty relic case
+    else:
+        relic_input = np.zeros((1, len(relic_state), 2))  # Allocate space based on actual relics size
+        for i, relic in enumerate(relic_state):
+            relic_input[0, i] = [
+                relic_tokenizer.texts_to_sequences([relic.get('name', '')])[0][0] if relic.get('name', '') else 0,
+                relic.get('counter', -1)
+            ]
+
+    return [player_input, hand_input, deck_input, monster_input, map_input, screen_type_input, relic_input]

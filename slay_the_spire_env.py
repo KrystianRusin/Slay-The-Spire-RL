@@ -1,7 +1,7 @@
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
-from tokenizers import power_tokenizer
+from tokenizers import power_tokenizer, relic_tokenizer
 
 import gymnasium as gym
 import numpy as np
@@ -21,6 +21,11 @@ class SlayTheSpireEnv(gym.Env):
             "amount": spaces.Box(low=0, high=100, shape=(1,), dtype=np.float32),
             "just_applied": spaces.Discrete(2),
             "id": spaces.Discrete(len(power_tokenizer.word_index) + 1)
+        })
+
+        relic_space = spaces.Dict({
+            "name": spaces.Discrete(len(relic_tokenizer.word_index) + 1),
+            "counter": spaces.Box(low=-1, high=100, shape=(1,), dtype=np.float32)
         })
 
         player_space = spaces.Dict({
@@ -76,7 +81,8 @@ class SlayTheSpireEnv(gym.Env):
                 "powers": spaces.Tuple([power_space] * 10),
             })] * 5),
             "map": spaces.Tuple([map_node_space] * 51),
-            "screen_type": spaces.Discrete(14)
+            "screen_type": spaces.Discrete(14),
+            "relics": spaces.Sequence(relic_space)
         })
 
     def create_action_space(self):
