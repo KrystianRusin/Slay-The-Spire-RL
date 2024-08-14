@@ -59,7 +59,7 @@ def handle_gym_client(gym_client_socket):
                     continue
 
             # Save the valid game state to a file before forwarding it
-            # save_game_state(game_state_json)
+            save_game_state(game_state_json)
             # log_message(f"Saved and forwarding valid game state: {game_state_json}")
 
             # Forward the valid game state to the gym client

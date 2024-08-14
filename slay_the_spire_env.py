@@ -1,6 +1,11 @@
 import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
+from tokenizers import power_tokenizer
+
+import gymnasium as gym
+import numpy as np
+from gymnasium import spaces
 
 class SlayTheSpireEnv(gym.Env):
     def __init__(self, initial_state):
@@ -9,8 +14,15 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.previous_action = None
         self.curr_action = None
-        self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose']
+        self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose', 'confirm', "leave"]
         self.action_space, self.actions = self.create_action_space()
+
+        # Define power space first
+        power_space = spaces.Dict({
+            "amount": spaces.Box(low=0, high=100, shape=(1,), dtype=np.float32),
+            "just_applied": spaces.Discrete(2),
+            "id": spaces.Discrete(len(power_tokenizer.word_index) + 1)
+        })
 
         player_space = spaces.Dict({
             "current_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
@@ -18,6 +30,7 @@ class SlayTheSpireEnv(gym.Env):
             "block": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
             "energy": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
             "orbs": spaces.MultiBinary(10),
+            "powers": spaces.Tuple([power_space] * 10),
         })
 
         card_space = spaces.Dict({
@@ -53,9 +66,13 @@ class SlayTheSpireEnv(gym.Env):
                 "current_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "block": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
                 "id": spaces.Discrete(53),
+                "powers": spaces.Tuple([power_space] * 10),
             })] * 5),
             "screen_type": spaces.Discrete(14)
         })
+
+    # Define the create_action_space function and other necessary methods here
+
 
     
     def create_action_space(self):
@@ -75,7 +92,7 @@ class SlayTheSpireEnv(gym.Env):
                 actions.append(f'PLAY {card_index} {target_index}')
         for card_index in range(1, 10):
             actions.append(f'PLAY {card_index}')
-        actions.extend(['END', 'PROCEED', 'RETURN'])
+        actions.extend(['END', 'PROCEED', 'RETURN', 'CONFIRM', "LEAVE"])
         for choice_index in range(20):
             actions.append(f'CHOOSE {choice_index}')
         return spaces.Discrete(len(actions)), actions
@@ -134,6 +151,10 @@ class SlayTheSpireEnv(gym.Env):
         if previous_game_state and current_game_state:
             if self.previous_action is not None:
                 # Check for choice list changes
+
+                if self.actions[self.previous_action] in ["PROCEED", "RETURN"] and self.actions[self.curr_action] == self.actions[self.previous_action]:
+                    reward -= 1
+
                 previous_choices = previous_game_state.get('choice_list', [])
                 current_choices = current_game_state.get('choice_list', [])
                 if previous_choices != current_choices:
@@ -165,16 +186,23 @@ class SlayTheSpireEnv(gym.Env):
                 if self.actions[self.previous_action].startswith('POTION Use'):
                     reward += 5
 
+                 # Penalize for ending the turn with playable cards
+                if self.actions[self.previous_action] == 'END':
+                    hand = previous_combat_state.get('hand', [])
+                    playable_cards = [card for card in hand if card.get('is_playable')]
+                    if playable_cards:
+                        reward -= 5  # Apply a small penalty for ending the turn with playable cards
+
         return reward
 
 
     def check_if_done(self):
-        game_state = self.state.get("game_state", None)
-        if not game_state:
+            game_state = self.state.get("game_state", None)
+            if not game_state:
+                return False
+            if self.state['game_state'].get('screen_type') == "GAME_OVER":
+                return True
             return False
-        if self.state['game_state'].get('screen_type') == "GAME_OVER":
-            return True
-        return False
 
     def get_invalid_action_mask(self):
         invalid_action_mask = np.zeros(len(self.actions), dtype=bool)
@@ -212,13 +240,24 @@ class SlayTheSpireEnv(gym.Env):
                     invalid_action_mask[i] = True
                     continue
 
-                if potion['requires_target'] and len(parts) < 4:
-                    invalid_action_mask[i] = True
-                    continue
+                # New logic: handle target validation for potions
+                if potion['requires_target']:
+                    if len(parts) < 4:
+                        invalid_action_mask[i] = True  # No target provided
+                        continue
+                    
+                    target_index = int(parts[3])
+                    monsters = game_state.get('combat_state', {}).get('monsters', [])
+                    valid_monster_indices = [idx for idx, monster in enumerate(monsters) if not monster.get('is_gone', False)]
+                    
+                    if target_index not in valid_monster_indices:
+                        invalid_action_mask[i] = True
+                        continue
+
                 if not potion['requires_target'] and len(parts) == 4:
                     invalid_action_mask[i] = True
 
-         # Handle choice-related actions
+        # Handle choice-related actions
         choice_list = game_state.get('choice_list', [])
         if len(choice_list) != 0:
             for i, action in enumerate(self.actions):
@@ -228,7 +267,7 @@ class SlayTheSpireEnv(gym.Env):
                     if choice_index >= len(choice_list):
                         invalid_action_mask[i] = True
 
-             # Check if 'combat_state' exists
+        # Handle combat-related actions
         combat_state = game_state.get('combat_state', None)
         if not combat_state:
             # If combat_state doesn't exist, restrict combat-related actions
@@ -237,7 +276,6 @@ class SlayTheSpireEnv(gym.Env):
                     invalid_action_mask[i] = True
             return invalid_action_mask
 
-        # Handle combat-related actions
         hand = combat_state.get('hand', [])
         monsters = combat_state.get('monsters', [])
         valid_monster_indices = [i for i, monster in enumerate(monsters) if not monster['is_gone']]
@@ -264,6 +302,8 @@ class SlayTheSpireEnv(gym.Env):
                         invalid_action_mask[i] = True
 
         return invalid_action_mask
+
+
 
     def get_valid_actions(self):
         invalid_action_mask = self.get_invalid_action_mask()

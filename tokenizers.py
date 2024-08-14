@@ -117,3 +117,27 @@ screen_types = [
 # Initialize the screen type tokenizer
 screen_type_tokenizer = Tokenizer()
 screen_type_tokenizer.fit_on_texts(screen_types)
+
+powers = [
+    "Accuracy", "After Image", "Amplify", "Anger", "Angry", "Artifact", "Attack Burn", "Barricade", 
+    "BackAttack", "BeatOfDeath", "Bias", "Berserk", "Blur", "Brutality", "Buffer", "Burst", 
+    "Choked", "Collect", "Combust", "Confusion", "Converse", "Constricted", "CorpseExplosionPower", 
+    "Corruption", "Creative AI", "Curiosity", "Curl Up", "Dark Embrace", "Demon Form", "Dexterity", 
+    "Double Damage", "Double Tap", "Draw Card", "Draw", "Draw Reduction", "DuplicationPower", 
+    "Echo Form", "Electro", "EnergizedBlue", "Energized", "Entangled", "Envenom", "Equilibrium", 
+    "Evolve", "Explosive", "Fading", "Feel No Pain", "Fire Breathing", "Flame Barrier", "Flight", 
+    "Focus", "Nullify Attack", "Frail", "Shackled", "Generic Strength Up Power", "GrowthPower", 
+    "Heatsink", "Hello", "Infinite Blades", "Hex", "IntangiblePlayer", "Intangible", "Invincible", 
+    "Juggernaut", "Lightning Mastery", "Lockon", "Loop", "DexLoss", "Flex", "Magnetism", 
+    "Malleable", "Mayhem", "Metallicize", "Minion", "Mode Shift", "Next Turn Block", "Night Terror", 
+    "NoBlockPower", "No Draw", "Poison", "Painful Stabs", "Panache", "Pen Nib", "Phantasmal", 
+    "Plated Armor", "Rage", "Compulsive", "Rebound", "RechargingCore", "Regeneration", "Repair", 
+    "Life Link", "Retain Cards", "Ritual", "Rupture", "Sadistic", "Sharp Hide", "Shifting", 
+    "Skill Burn", "Slow", "Split", "Spore Cloud", "Stasis", "StaticDischarge", "Storm", 
+    "Strength", "StrikeUp", "Surrounded", "Thievery", "Thorns", "Thousand Cuts", "Time Warp", 
+    "Tools Of The Trade", "TheBomb", "Unawakened", "Vulnerable", "Weakened", "Winter", "Wraith Form v2"
+]
+
+
+power_tokenizer = Tokenizer()
+power_tokenizer.fit_on_texts(powers)

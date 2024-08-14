@@ -1,5 +1,6 @@
 from keras.models import Model
 from keras.layers import Dense, Flatten, Input, Concatenate, LSTM
+
 def build_model(observation_space, nb_actions):
     # Define input layers for each part of the observation space
     player_input = Input(shape=(4,), name='player_input')  # current_hp, max_hp, block, energy
@@ -21,7 +22,7 @@ def build_model(observation_space, nb_actions):
     
     # Define input for screen type
     screen_type_input = Input(shape=(1,), name='screen_type_input')
-    
+
     # Concatenate all processed inputs
     concatenated = Concatenate()([player_input, card_flatten, deck_lstm, monster_flatten, screen_type_input])
     
