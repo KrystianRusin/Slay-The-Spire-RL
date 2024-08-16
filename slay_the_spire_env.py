@@ -14,6 +14,7 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.previous_action = None
         self.curr_action = None
+        self.action_taken = False
         self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose', 'confirm', "leave"]
         self.action_space, self.actions = self.create_action_space()
 
@@ -87,7 +88,7 @@ class SlayTheSpireEnv(gym.Env):
 
     def create_action_space(self):
         actions = []
-        player_classes = ['IRONCLAD']
+        player_classes = ['IRONCLAD', 'SILENT']
         for player_class in player_classes:
             actions.append(f'START {player_class} 0')
         for use_discard in ['Use', 'Discard']:
@@ -131,6 +132,13 @@ class SlayTheSpireEnv(gym.Env):
         else:
             # Update to the new game state
             self.state = game_state
+        
+        if self.actions[action] == 'END':
+            self.action_taken = False  # Reset at the start of the next turn
+
+        if self.actions[action].startswith(('PLAY', 'POTION Use')):
+            print("combat action taken")
+            self.action_taken = True
 
         # Get the command string corresponding to the current action
         command_str = self.actions[self.curr_action]
@@ -192,17 +200,16 @@ class SlayTheSpireEnv(gym.Env):
                 
                 # Additional reward for potion use
                 if self.actions[self.previous_action].startswith('POTION Use'):
-                    reward += 5
+                    reward += 10
 
                 if self.actions[self.previous_action].startswith('POTION Discard'):
-                    reward -= 5
+                    reward -= 20
 
-                # Penalize for ending the turn with playable cards
+                # Penalize for ending the turn without taking any significant action
                 if self.actions[self.previous_action] == 'END':
-                    hand = previous_combat_state.get('hand', [])
-                    playable_cards = [card for card in hand if card.get('is_playable')]
-                    if playable_cards:
-                        reward -= 10  # Apply a small penalty for ending the turn with playable cards
+                    if not self.action_taken:
+                        print("no action penalty")
+                        reward -= 100  # Apply a penalty for ending the turn without any significant action
 
                 # Reward for acquiring a relic
                 previous_relics = previous_game_state.get('relics', [])
@@ -322,7 +329,11 @@ class SlayTheSpireEnv(gym.Env):
                         invalid_action_mask[i] = True
                     if action.split()[0].lower() == 'leave':
                         invalid_action_mask[i] = True
-
+            if previous_command == 'leave':
+                for i, action in enumerate(self.actions):
+                    if action.lower() == 'choose 0':
+                        invalid_action_mask[i] = True
+                        
         # Handle combat-related actions
         combat_state = game_state.get('combat_state', None)
         if not combat_state:
