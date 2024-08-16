@@ -64,8 +64,6 @@ def handle_gym_client(gym_client_socket):
 
             # Forward the valid game state to the gym client
             gym_client_socket.sendall(game_state_json.encode('utf-8'))
-            last_game_state = game_state  # Update the last sent game state
-            log_message("Game state sent to gym client.")
             
             # Receive the response (chosen action) from the gym client
             response = gym_client_socket.recv(4096)

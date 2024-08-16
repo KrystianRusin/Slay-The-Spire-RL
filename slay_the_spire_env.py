@@ -205,12 +205,6 @@ class SlayTheSpireEnv(gym.Env):
                 if self.actions[self.previous_action].startswith('POTION Discard'):
                     reward -= 20
 
-                # Penalize for ending the turn without taking any significant action
-                if self.actions[self.previous_action] == 'END':
-                    if not self.action_taken:
-                        print("no action penalty")
-                        reward -= 100  # Apply a penalty for ending the turn without any significant action
-
                 # Reward for acquiring a relic
                 previous_relics = previous_game_state.get('relics', [])
                 current_relics = current_game_state.get('relics', [])
@@ -342,9 +336,17 @@ class SlayTheSpireEnv(gym.Env):
                 if action.startswith('PLAY'):
                     invalid_action_mask[i] = True
             return invalid_action_mask
-
+        
         hand = combat_state.get('hand', [])
         monsters = combat_state.get('monsters', [])
+        has_playable_cards = any(card.get('is_playable') for card in hand)
+
+        # If no action has been taken and there are playable cards, invalidate "END"
+        if not self.action_taken and has_playable_cards:
+            for i, action in enumerate(self.actions):
+                if action.lower() == 'end':
+                    invalid_action_mask[i] = True
+
         valid_monster_indices = [i for i, monster in enumerate(monsters) if not monster['is_gone']]
         for i, action in enumerate(self.actions):
             parts = action.split()
@@ -367,8 +369,6 @@ class SlayTheSpireEnv(gym.Env):
                     target_index = int(parts[2])
                     if target_index not in valid_monster_indices:
                         invalid_action_mask[i] = True
-
-        
 
         return invalid_action_mask
 
