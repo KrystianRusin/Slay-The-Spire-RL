@@ -225,6 +225,10 @@ class SlayTheSpireEnv(gym.Env):
         # Check if game states exist
         if previous_game_state is None or current_game_state is None:
             return reward
+        
+        if self.previous_action is not None and self.actions[self.previous_action].startswith("CHOOSE"):
+            print("Choose reward")
+            reward += 5
 
         previous_combat_state = previous_game_state.get('combat_state', {})
         current_combat_state = current_game_state.get('combat_state', {})
@@ -246,8 +250,8 @@ class SlayTheSpireEnv(gym.Env):
             reward += 40
 
         # Penalty for taking damage
-        previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
-        current_hp = current_game_state.get('player', {}).get('current_hp', 0)
+        previous_hp = previous_game_state.get('current_hp', 0)
+        current_hp = current_game_state.get('current_hp', 0)
         if current_hp < previous_hp:
             print("HP Damage Penalty ", self.actions[self.previous_action])
             reward -= (previous_hp - current_hp) * 3
@@ -385,11 +389,9 @@ class SlayTheSpireEnv(gym.Env):
         # Prevent "RETURN" action immediately after "PROCEED"
         if self.previous_action is not None:
             previous_command = self.actions[self.previous_action].split()[0].lower()
-            if previous_command == 'proceed' or previous_command == "choose" or "return":
+            if previous_command == 'proceed' or previous_command == "choose" or previous_command == "return":
                 for i, action in enumerate(self.actions):
                     if action.split()[0].lower() == 'return':
-                        invalid_action_mask[i] = True
-                    if action.split()[0].lower() == 'leave':
                         invalid_action_mask[i] = True
             if previous_command == 'leave':
                 for i, action in enumerate(self.actions):

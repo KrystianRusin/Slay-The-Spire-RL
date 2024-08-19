@@ -10,37 +10,42 @@ from stable_baselines3.common.policies import ActorCriticPolicy
 from stable_baselines3.ppo import PPO
 from slay_the_spire_env import SlayTheSpireEnv, MaskedSlayTheSpireEnv
 import matplotlib.pyplot as plt
+from collections import deque
 
+# Function to plot performance metrics with separate subplots for rewards, rolling averages, and episode lengths
+def plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward, save_path="performance_metrics.png"):
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(10, 12))
 
-def plot_performance_metrics(episode_rewards, episode_lengths, save_path="performance_metrics.png"):
-    # Create the figure and axis objects for the plot
-    fig, ax1 = plt.subplots()
-
-    # Plot the total reward per episode
+    # Plot total rewards on the first subplot
     ax1.plot(range(len(episode_rewards)), episode_rewards, 'b-', label='Reward')
+    ax1.axhline(y=highest_reward, color='r', linestyle='--', label=f'Highest Reward: {highest_reward}')
     ax1.set_xlabel('Episode')
-    ax1.set_ylabel('Total Reward', color='b')
-    ax1.tick_params('y', colors='b')
+    ax1.set_ylabel('Total Reward')
+    ax1.set_title('Episode Rewards')
+    ax1.legend()
+    ax1.grid(True)
 
-    # Create another y-axis sharing the same x-axis for episode length
-    ax2 = ax1.twinx()
-    ax2.plot(range(len(episode_lengths)), episode_lengths, 'r-', label='Episode Length')
-    ax2.set_ylabel('Episode Length', color='r')
-    ax2.tick_params('y', colors='r')
+    # Plot rolling average rewards on the second subplot
+    ax2.plot(range(len(rolling_avg_rewards)), rolling_avg_rewards, 'g--', label='Rolling Avg Reward (Last 10)')
+    ax2.set_xlabel('Episode')
+    ax2.set_ylabel('Rolling Avg Reward')
+    ax2.set_title('Rolling Average of Rewards')
+    ax2.legend()
+    ax2.grid(True)
 
-    # Add a title and grid
-    plt.title('Performance Metrics: Rewards and Episode Lengths')
-    plt.grid(True)
+    # Plot episode lengths on the third subplot
+    ax3.plot(range(len(episode_lengths)), episode_lengths, 'r-', label='Episode Length')
+    ax3.set_xlabel('Episode')
+    ax3.set_ylabel('Episode Length')
+    ax3.set_title('Episode Lengths')
+    ax3.grid(True)
 
-    # Save the plot to the specified file path (overwrites if file exists)
+    # Adjust layout and save the figure
+    plt.tight_layout()
     plt.savefig(save_path, format='png')
-
-    # Close the plot to free up memory
     plt.close(fig)
 
-    # Notify that the plot has been saved
     print(f"Performance metrics saved to {save_path}")
-
 
 def receive_full_json(client_socket):
     data = b''
@@ -53,10 +58,12 @@ def receive_full_json(client_socket):
             if not part:
                 raise
 
-
 def main():
     episode_rewards = []
     episode_lengths = []
+    rolling_avg_rewards = []
+    reward_queue = deque(maxlen=10)  # Rolling window for the last 10 rewards
+    highest_reward = float('-inf')  # Initialize highest reward as negative infinity
 
     # Establish socket connection to receive the game state
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -67,7 +74,7 @@ def main():
     env = MaskedSlayTheSpireEnv(unmasked_env)
 
     # Initialize PPO agent with MultiInputPolicy to handle dict observation spaces
-    model = PPO("MultiInputPolicy", env, ent_coef=0.03,  gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1)
+    model = PPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1)
 
     # Load model weights if available
     if os.path.exists("ppo_slay_the_spire.zip"):
@@ -112,7 +119,6 @@ def main():
             # Apply the invalid action mask to the action logits
             masked_logits = np.where(invalid_action_mask, -1e8, action_logits)
 
-                   
             # Choose the action with the highest valid value
             chosen_action = np.argmax(masked_logits)
             chosen_command = env.actions[chosen_action]
@@ -130,23 +136,30 @@ def main():
             episode_length += 1
             print("\n")
 
-          # Append metrics for plotting
+        # Update performance metrics at the end of the episode
         episode_rewards.append(total_reward)
         episode_lengths.append(episode_length)
+        reward_queue.append(total_reward)
 
-        # Periodically plot the metrics
+        # Update the highest reward if the current total_reward exceeds it
+        if total_reward > highest_reward:
+            highest_reward = total_reward
+
+        # Calculate the rolling average of the last 10 rewards and append to the rolling average list
+        rolling_avg = sum(reward_queue) / len(reward_queue) if reward_queue else 0
+        rolling_avg_rewards.append(rolling_avg)
+
+        # Periodically plot the metrics every 10 episodes
         if episode % 10 == 0:
-            model.save("ppo_slay_the_spire")
-            
+            plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward)
 
         # Increment episode count
         episode += 1
 
         # Save model after each episode
-        plot_performance_metrics(episode_rewards, episode_lengths)
-        
-    client_socket.close()
+        model.save("ppo_slay_the_spire")
 
+    client_socket.close()
 
 
 if __name__ == "__main__":
