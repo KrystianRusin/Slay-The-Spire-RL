@@ -1,0 +1,7 @@
+numpy==1.23.5
+gymnasium==0.28.1
+stable-baselines3==1.8.0
+torch==2.0.1
+matplotlib==3.7.2
+tensorflow==2.10.0
+keras==2.10.0
