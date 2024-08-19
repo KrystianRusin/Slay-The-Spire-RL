@@ -139,7 +139,6 @@ This project was built using the following libraries:
 - **Slay the Spire** - The game used as the environment for this project.
 - **Communication Mod** - Used for enabling communication between *Slay the Spire* and the agent via socket.
   
-```bash
+## Notes
 
-
-python main.py
+This project is my first attempt at creating a full RL agent on a custom environment so feel free to raise any issues on the repository if you encounter any problems
