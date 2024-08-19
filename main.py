@@ -1,62 +1,45 @@
 import json
-import numpy as np
 import socket
 import time
 import os
-import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import stable_baselines3 as sb3
+from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.policies import ActorCriticPolicy
+from stable_baselines3.ppo import PPO
 from slay_the_spire_env import SlayTheSpireEnv, MaskedSlayTheSpireEnv
-from masked_dqn_agent import MaskedDQNAgent
-from build_model import build_model
-from prepare_state_inputs import prepare_state_inputs
-from rl.memory import SequentialMemory
-from rl.policy import EpsGreedyQPolicy
-from keras.optimizers.legacy import Adam
+import matplotlib.pyplot as plt
 
-WEIGHTS_FILE = "dqn_weights.h5f"
-METRICS_PLOT_FILE = "metrics_plot.png"
 
-# Define epsilon parameters
-EPSILON_START = 1.0  # Initial exploration rate
-EPSILON_MIN = 0.01   # Minimum exploration rate
-EPSILON_DECAY = 0.995  # Decay rate per episode
+def plot_performance_metrics(episode_rewards, episode_lengths, save_path="performance_metrics.png"):
+    # Create the figure and axis objects for the plot
+    fig, ax1 = plt.subplots()
 
-def save_metrics(episode_rewards, rolling_avg_rewards, episode_lengths, highest_reward, highest_reward_length):
-    plt.figure(figsize=(12, 6))
+    # Plot the total reward per episode
+    ax1.plot(range(len(episode_rewards)), episode_rewards, 'b-', label='Reward')
+    ax1.set_xlabel('Episode')
+    ax1.set_ylabel('Total Reward', color='b')
+    ax1.tick_params('y', colors='b')
 
-    # Plot cumulative rewards per episode (even-numbered episodes only)
-    plt.subplot(4, 1, 1)
-    plt.plot(range(0, len(episode_rewards), 2), episode_rewards[::2], label="Cumulative Reward per Episode")
-    plt.title("Cumulative Rewards per Episode")
-    plt.xlabel("Episode (Even Numbers)")
-    plt.ylabel("Cumulative Reward")
-    plt.legend()
+    # Create another y-axis sharing the same x-axis for episode length
+    ax2 = ax1.twinx()
+    ax2.plot(range(len(episode_lengths)), episode_lengths, 'r-', label='Episode Length')
+    ax2.set_ylabel('Episode Length', color='r')
+    ax2.tick_params('y', colors='r')
 
-    # Plot rolling average rewards (even-numbered episodes only, starting after episode 10)
-    plt.subplot(4, 1, 2)
-    plt.plot(range(10, len(rolling_avg_rewards) * 2 + 10, 2), rolling_avg_rewards, label="Rolling Average Reward (Last 10 Episodes)", color='orange')
-    plt.title("Rolling Average Rewards")
-    plt.xlabel("Episode (Even Numbers)")
-    plt.ylabel("Rolling Average Reward")
-    plt.legend()
+    # Add a title and grid
+    plt.title('Performance Metrics: Rewards and Episode Lengths')
+    plt.grid(True)
 
-    # Plot episode lengths (even-numbered episodes only)
-    plt.subplot(4, 1, 3)
-    plt.plot(range(0, len(episode_lengths), 2), episode_lengths[::2], label="Episode Lengths", color='green')
-    plt.title("Episode Lengths")
-    plt.xlabel("Episode (Even Numbers)")
-    plt.ylabel("Length (timesteps)")
-    plt.legend()
+    # Save the plot to the specified file path (overwrites if file exists)
+    plt.savefig(save_path, format='png')
 
-    # Display highest reward and corresponding episode length
-    plt.subplot(4, 1, 4)
-    plt.text(0.5, 0.5, f"Highest Reward: {highest_reward}\nEpisode Length: {highest_reward_length}",
-             horizontalalignment='center', verticalalignment='center', fontsize=12, transform=plt.gca().transAxes)
-    plt.title("Highest Reward and Episode Length")
-    plt.axis("off")
+    # Close the plot to free up memory
+    plt.close(fig)
 
-    plt.tight_layout()
-    plt.savefig(METRICS_PLOT_FILE)
-    plt.close()
+    # Notify that the plot has been saved
+    print(f"Performance metrics saved to {save_path}")
 
 
 def receive_full_json(client_socket):
@@ -70,33 +53,26 @@ def receive_full_json(client_socket):
             if not part:
                 raise
 
+
 def main():
+    episode_rewards = []
+    episode_lengths = []
+
+    # Establish socket connection to receive the game state
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.connect(("localhost", 9999))
 
-    env = SlayTheSpireEnv({})
-    env = MaskedSlayTheSpireEnv(env)
-    nb_actions = env.action_space.n
-    model = build_model(env.observation_space, nb_actions)
-    model.summary()
+    # Initialize the environment
+    unmasked_env = SlayTheSpireEnv({})
+    env = MaskedSlayTheSpireEnv(unmasked_env)
 
-    memory = SequentialMemory(limit=50000, window_length=1)
-    policy = EpsGreedyQPolicy(eps=EPSILON_START)
-    agent = MaskedDQNAgent(model=model, nb_actions=nb_actions, memory=memory, nb_steps_warmup=1000, target_model_update=1e-2, policy=policy)
-    agent.compile(Adam(learning_rate=1e-3), metrics=['mae'])
+    # Initialize PPO agent with MultiInputPolicy to handle dict observation spaces
+    model = PPO("MultiInputPolicy", env, ent_coef=0.03,  gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1)
 
-    if os.path.exists(WEIGHTS_FILE):
-        print(f"Loading weights from {WEIGHTS_FILE}")
-        agent.load_weights(WEIGHTS_FILE)
-
-    episode_rewards = []
-    rolling_avg_rewards = []
-    episode_lengths = []
-    epsilon = EPSILON_START  # Initialize epsilon value for decay
-    previous_game_state = None  # Track the previous game state
-
-    highest_reward = float('-inf')  # Track the highest reward
-    highest_reward_length = 0  # Track the episode length for the highest reward
+    # Load model weights if available
+    if os.path.exists("ppo_slay_the_spire.zip"):
+        print("Loading existing model weights...")
+        model = PPO.load("ppo_slay_the_spire", env=env)
 
     episode = 0
     while True:
@@ -105,68 +81,72 @@ def main():
         episode_length = 0
 
         while not done:
+            # Receive the next game state via socket
+            time.sleep(1)  # Ensure we are not overwhelming the socket
             try:
                 game_state = receive_full_json(client_socket)
             except json.JSONDecodeError as e:
                 print(f"Failed to decode JSON: {e}")
                 continue
+            print("Game State Received")
 
-            # Check if the current game state is identical to the previous one
-            if game_state == previous_game_state:
-                print("Game state has not changed. Skipping this step.")
-                time.sleep(0.1)  # Small delay to avoid tight loop
-                continue  # Skip this iteration
+            # Update the environment's internal state with the new game state
+            unmasked_env.update_game_state(game_state)
 
-            previous_game_state = game_state  # Update the previous game state
+            # Ensure the invalid action mask is recalculated with the new state
+            invalid_action_mask = env.get_invalid_action_mask()
 
-            # Prepare state inputs for the model
-            state_inputs = prepare_state_inputs(env.state)
-            time.sleep(0.5)
+            # Debug: Print available commands and valid actions after the mask is applied
+            available_commands = game_state.get('available_commands', [])
+            print("Available Commands:", available_commands)
 
-            # Use the DQN agent to select an action
-            action = agent.forward({'state': state_inputs, 'invalid_action_mask': env.get_invalid_action_mask()})
-            chosen_command = env.actions[action]
+            # Print the action space with validity (for debugging purposes)
+            env.print_action_space_with_validity()
 
-            print("Chosen action index:", action)
-            print("Chosen action:", chosen_command)
+            # Predict the next action using the PPO model
+            observation = env.flatten_observation(game_state)
 
-            # Step in the environment with the chosen action
-            state, reward, done, info = env.step(action, game_state)
+            # Predict the action using the model
+            action_logits, _states = model.predict(observation)
+
+            # Apply the invalid action mask to the action logits
+            masked_logits = np.where(invalid_action_mask, -1e8, action_logits)
+
+                   
+            # Choose the action with the highest valid value
+            chosen_action = np.argmax(masked_logits)
+            chosen_command = env.actions[chosen_action]
+            print(f"Chosen Action: {chosen_action}, Command: {chosen_command}")
+
+            # Send the chosen command to the game
             client_socket.sendall(chosen_command.encode('utf-8'))
 
-            # Store the experience and train the agent
-            agent.backward(reward, terminal=done)
+            # Step through the environment, passing only the action
+            observation, reward, done, info = env.step(chosen_action)
 
+            # Accumulate reward and step count
             total_reward += reward
+            print("TOTAL REWARD", total_reward)
             episode_length += 1
+            print("\n")
 
-        # Store the cumulative reward and episode length after each episode
+          # Append metrics for plotting
         episode_rewards.append(total_reward)
         episode_lengths.append(episode_length)
 
-        # Calculate rolling average for the last 10 episodes, starting after episode 10
-        if len(episode_rewards) > 10:
-            rolling_avg_rewards.append(np.mean(episode_rewards[-10:]))
+        # Periodically plot the metrics
+        if episode % 10 == 0:
+            model.save("ppo_slay_the_spire")
+            
 
-        # Update the highest reward and the corresponding episode length
-        if total_reward > highest_reward:
-            highest_reward = total_reward
-            highest_reward_length = episode_length
-
-        # Save the performance metrics for even-numbered episodes only
-        if episode % 2 == 1:
-            save_metrics(episode_rewards, rolling_avg_rewards, episode_lengths, highest_reward, highest_reward_length)
-
-        # Epsilon decay: Apply decay after each episode
-        epsilon = max(EPSILON_MIN, epsilon * EPSILON_DECAY)
-        policy.eps = epsilon  # Update the epsilon in the policy
-        print(f"Epsilon updated to: {epsilon}")
-
-        print("Starting a new episode...")
+        # Increment episode count
         episode += 1
-        agent.save_weights(WEIGHTS_FILE, overwrite=True)
 
+        # Save model after each episode
+        plot_performance_metrics(episode_rewards, episode_lengths)
+        
     client_socket.close()
+
 
 
 if __name__ == "__main__":

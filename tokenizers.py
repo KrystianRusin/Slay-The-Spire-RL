@@ -92,7 +92,7 @@ intent_tokenizer.fit_on_texts(intents)
 # List of all monster IDs
 monster_ids = [
     "AcidSlime_L", "AcidSlime_M", "AcidSlime_S", "ApologySlime", "Cultist", "FungiBeast", 
-    "GremlinFat", "GremlinNob", "GremlinThief", "GremlinTsundere", "GremlingWarrion", 
+    "GremlinFat", "GremlinNob", "GremlinThief", "GremlinTsundere", "GremlinWarrior", 
     "GremlinWizard", "Hexaghost", "HexaghostBody", "HexaghostOrb", "JawWorm", "Lagavulin", 
     "Looter", "LouseDefensive", "LouseNormal", "Sentry", "SlaverBlue", "SlaverRed", "SlimeBoss", 
     "SpikeSlime_L", "SpikeSlime_M", "SpikeSlime_S", "TheGuardian", "BanditBear", "BanditLeader", 
@@ -124,14 +124,14 @@ powers = [
     "Choked", "Collect", "Combust", "Confusion", "Converse", "Constricted", "CorpseExplosionPower", 
     "Corruption", "Creative AI", "Curiosity", "Curl Up", "Dark Embrace", "Demon Form", "Dexterity", 
     "Double Damage", "Double Tap", "Draw Card", "Draw", "Draw Reduction", "DuplicationPower", 
-    "Echo Form", "Electro", "EnergizedBlue", "Energized", "Entangled", "Envenom", "Equilibrium", 
+    "Echo Form", "Electro", "EnergizedBlue", "Enrage", "Energized", "Entangled", "Envenom", "Equilibrium", 
     "Evolve", "Explosive", "Fading", "Feel No Pain", "Fire Breathing", "Flame Barrier", "Flight", 
     "Focus", "Nullify Attack", "Frail", "Shackled", "Generic Strength Up Power", "GrowthPower", 
     "Heatsink", "Hello", "Infinite Blades", "Hex", "IntangiblePlayer", "Intangible", "Invincible", 
     "Juggernaut", "Lightning Mastery", "Lockon", "Loop", "DexLoss", "Flex", "Magnetism", 
     "Malleable", "Mayhem", "Metallicize", "Minion", "Mode Shift", "Next Turn Block", "Night Terror", 
     "NoBlockPower", "No Draw", "Poison", "Painful Stabs", "Panache", "Pen Nib", "Phantasmal", 
-    "Plated Armor", "Rage", "Compulsive", "Rebound", "RechargingCore", "Regeneration", "Repair", 
+    "Plated Armor", "Rage", "Compulsive", "Rebound", "RechargingCore", "Regenerate", "Repair", 
     "Life Link", "Retain Cards", "Ritual", "Rupture", "Sadistic", "Sharp Hide", "Shifting", 
     "Skill Burn", "Slow", "Split", "Spore Cloud", "Stasis", "StaticDischarge", "Storm", 
     "Strength", "StrikeUp", "Surrounded", "Thievery", "Thorns", "Thousand Cuts", "Time Warp", 
@@ -190,3 +190,54 @@ relics_list = [
 # Initialize the tokenizer for relics
 relic_tokenizer = Tokenizer()
 relic_tokenizer.fit_on_texts(relics_list)
+
+# List of all potion types
+potion_types = [
+    "Ambrosia", "Ancient Potion", "AttackPotion", "BlessingOfTheForge", "Block Potion", "BottledMiracle",
+    "BloodPotion", "ColorlessPotion", "CultistPotion", "CunningPotion", "Dexterity Potion", "DistilledChaos",
+    "DuplicationPotion", "ElixirPotion", "Energy Potion", "EntriopicBrew", "EssenceOfDarkness", "EssenceOfSteel",
+    "Explosive Potion", "FairyPotion", "FearPotion", "Fire Potion", "FocusPotion", "Fruit Juice", "GamblersBrew",
+    "GhostInAJar", "HeartOfIron", "LiquidBronze", "LiquidMemories", "Poison Potion", "PotionOfCapacity", "PotionSlot",
+    "PowerPotion", "Regen Potion", "SkillPotion", "SmokeBomb", "SneckoOil", "SpeedPotion", "StancePotion",
+    "SteroidPotion", "Strength Potion", "Swift Potion", "Weak Potion"
+]
+
+# Initialize the potion type tokenizer
+potion_tokenizer = Tokenizer()
+potion_tokenizer.fit_on_texts(potion_types)
+
+rest_options = [
+    "rest", 
+    "smith", 
+    "recall"
+]
+
+# Initialize the rest option tokenizer
+rest_tokenizer = Tokenizer()
+rest_tokenizer.fit_on_texts(rest_options)
+
+event_ids = [
+    "Falling", "MindBloom", "The Moai Head", "Mysterious Sphere", "SecretPortal", 
+    "SensoryStone", "Spire Heart", "Tomb of Lord Red Mask", "Winding Halls", 
+    "Addict", "Back To Basics", "Beggar", "Colosseum", "Cursed Tome", "Drug Dealer", 
+    "Forgotten Altar", "Ghosts", "Knowing Skull", "Nest", "The Joust", "The Library", 
+    "The Mausoleum", "Vampire", "Big Fish", "The Cleric", "Dead Adventurer", 
+    "Golden Idol", "Golden Wing", "World of Goop", "Living Wall", "Mushrooms", 
+    "Scrap Ooze", "Shining Light", "Liars Game", "Accursed Blacksmith", 
+    "Bonefire Elementals", "Designer", "Duplicator", "FaceTrader", 
+    "Fountain of Cleansing", "Golden Shrine", "Match and Keep!", "Wheel of Change", 
+    "Lab", "N'loth", "NoteForYourself", "Purifier", "The Woman in Blue", 
+    "Transmorgrifier", "Upgrade Shring", "WeMeetAgain"
+]
+
+event_id_tokenizer = Tokenizer()
+event_id_tokenizer.fit_on_texts(event_ids)
+
+reward_types = [
+    "CARD", "GOLD", "POTION", "RELIC", "STOLEN_GOLD", 
+    "SAPPHIRE_KEY", "EMERALD_KEY", "RUBY_KEY", "HEALING"
+]
+
+# Initialize and fit the tokenizer for reward types
+reward_type_tokenizer = Tokenizer()
+reward_type_tokenizer.fit_on_texts(reward_types)

@@ -1,7 +1,18 @@
 import gymnasium as gym
+import copy
 import numpy as np
 from gymnasium import spaces
-from tokenizers import power_tokenizer, relic_tokenizer
+from tokenizers import screen_type_tokenizer, potion_tokenizer
+
+from observations.player_observations import get_player_observation
+from observations.hand_observations import get_hand_observation
+from observations.monster_observations import get_monster_observation
+from observations.map_observations import get_map_observation
+from observations.potion_observations import get_potion_observation
+from observations.relic_observations import get_relic_observation
+from observations.extra_info_observations import get_extra_info_observation
+from observations.deck_observations import get_deck_observation
+from observations.screen_observations import get_screen_observation
 
 import gymnasium as gym
 import numpy as np
@@ -14,77 +25,14 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.previous_action = None
         self.curr_action = None
-        self.action_taken = False
+        self.action_taken = False# Define the available commands and action space permutations
+        self.recent_actions = []  # Store recent actions to avoid loops
+        self.recent_action_limit = 5
         self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose', 'confirm', "leave"]
         self.action_space, self.actions = self.create_action_space()
 
-        power_space = spaces.Dict({
-            "amount": spaces.Box(low=0, high=100, shape=(1,), dtype=np.float32),
-            "just_applied": spaces.Discrete(2),
-            "id": spaces.Discrete(len(power_tokenizer.word_index) + 1)
-        })
-
-        relic_space = spaces.Dict({
-            "name": spaces.Discrete(len(relic_tokenizer.word_index) + 1),
-            "counter": spaces.Box(low=-1, high=100, shape=(1,), dtype=np.float32)
-        })
-
-        player_space = spaces.Dict({
-            "current_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
-            "max_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
-            "block": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
-            "energy": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
-            "orbs": spaces.MultiBinary(10),
-            "powers": spaces.Tuple([power_space] * 10),
-        })
-
-        card_space = spaces.Dict({
-            "exhausts": spaces.Discrete(2),
-            "is_playable": spaces.Discrete(2),
-            "cost": spaces.Box(low=0, high=5, shape=(1,), dtype=np.float32),
-            "name": spaces.Discrete(378), 
-            "type": spaces.Discrete(5),  
-            "ethereal": spaces.Discrete(2),
-            "upgrades": spaces.Box(low=0, high=5, shape=(1,), dtype=np.float32),
-            "rarity": spaces.Discrete(6), 
-            "has_target": spaces.Discrete(2)
-        })
-
-        hand_space = spaces.Tuple([card_space] * 10)
-
-        map_node_space = spaces.Dict({
-            "symbol": spaces.Discrete(6),  # ?, $, T, M, E, R represented by 0-5
-            "x": spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32),
-            "y": spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32),
-            "children": spaces.Tuple([spaces.Tuple([spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32), 
-                                                   spaces.Box(low=0, high=10, shape=(1,), dtype=np.int32)])] * 3)  # Max 3 children nodes per node
-        })
-
-        self.observation_space = spaces.Dict({
-            "player": player_space,
-            "hand": spaces.Tuple([hand_space] * 10),
-            "deck": spaces.Sequence(card_space),
-            "draw_pile": spaces.Sequence(card_space),
-            "discard_pile": spaces.Sequence(card_space),
-            "exhaust_pile": spaces.Sequence(card_space),
-            "screen_type": spaces.Discrete(10),
-            "monsters": spaces.Tuple([spaces.Dict({
-                "is_gone": spaces.Discrete(2),
-                "move_hits": spaces.Box(low=0, high=10, shape=(1,), dtype=np.float32),
-                "move_base_damage": spaces.Box(low=0, high=50, shape=(1,), dtype=np.float32),
-                "half_dead": spaces.Discrete(2),
-                "move_adjusted_damage": spaces.Box(low=0, high=50, shape=(1,), dtype=np.float32),
-                "max_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
-                "intent": spaces.Discrete(13),
-                "current_hp": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
-                "block": spaces.Box(low=0, high=1, shape=(1,), dtype=np.float32),
-                "id": spaces.Discrete(53),
-                "powers": spaces.Tuple([power_space] * 10),
-            })] * 5),
-            "map": spaces.Tuple([map_node_space] * 51),
-            "screen_type": spaces.Discrete(14),
-            "relics": spaces.Sequence(relic_space)
-        })
+        # Define observation space (preserving the structure you provided)
+        self.observation_space = self.create_observation_space()
 
     def create_action_space(self):
         actions = []
@@ -100,7 +48,7 @@ class SlayTheSpireEnv(gym.Env):
                 actions.append(f'POTION {use_discard} {potion_slot}')
         for card_index in range(1, 10):
             for target_index in range(5):
-                actions.append(f'PLAY {card_index} {target_index}')
+                actions.append(f'PLAY {card_index } {target_index}')
         for card_index in range(1, 10):
             actions.append(f'PLAY {card_index}')
         actions.extend(['END', 'PROCEED', 'RETURN', 'CONFIRM', "LEAVE"])
@@ -108,40 +56,139 @@ class SlayTheSpireEnv(gym.Env):
             actions.append(f'CHOOSE {choice_index}')
         return spaces.Discrete(len(actions)), actions
 
+    def create_observation_space(self):
+
+        # Player observation space (current_hp, max_hp, block, energy, powers)
+        # 4 player stats + 20 powers (assuming a max of 20 powers for flexibility)
+        player_space = spaces.Box(low=0, high=1, shape=(4 + 20,), dtype=np.float32)  # 4 stats + max 20 powers
+
+        # Hand observation space (max 10 cards, with 8 attributes per card)
+        hand_space = spaces.Box(low=0, high=1, shape=(10, 8), dtype=np.float32)
+
+        # Monster observation space (max 5 monsters, with 10 attributes per monster + 20 powers)
+        monster_space = spaces.Box(low=0, high=1, shape=(5, 10 + 20), dtype=np.float32)  # 10 attributes + max 20 powers per monster
+
+        # Map observation space (max 100 map nodes, with 4 attributes per node)
+        map_space = spaces.Box(low=0, high=10, shape=(100, 4), dtype=np.float32)
+
+        # Relics observation space (max 30 relics, with 2 attributes per relic)
+        relic_space = spaces.Box(low=0, high=1, shape=(30, 2), dtype=np.float32)
+
+        deck_space = spaces.Box(low=0, high=1, shape=(100, 8), dtype=np.float32)
+
+        potion_space = spaces.Box(low=0, high=1, shape=(5, 4), dtype=np.float32)  # 5 potions, 4 attributes each
+
+        screen_space = spaces.Box(low=0, high=1, shape=(50,), dtype=np.float32)
+
+        # Additional game state information (screen_type, deck size, etc.)
+        extra_info_space = spaces.Box(
+            low=np.array([0, 0, 0, 0, 0]),  # Lower bounds for each field
+            high=np.array([100, 100, 1000, 20, len(screen_type_tokenizer.word_index)]),  # Upper bounds
+            shape=(5,),
+            dtype=np.float32
+        )
+
+        # Combine all the spaces into a single observation space
+        combined_space = spaces.Dict({
+            "player": player_space,
+            "hand": hand_space,
+            "monsters": monster_space,
+            "deck": deck_space,
+            "potion": potion_space,
+            "map": map_space,
+            "relics": relic_space,
+            "screen": screen_space,
+            "extra_info": extra_info_space
+        })
+
+        return combined_space
+
+    def flatten_observation(self, state):
+        if "game_state" not in state:
+            player_observation = np.zeros((24,), dtype=np.float32)  # Adjusted to (24,) for 4 stats + 20 powers
+            hand_observation = np.zeros((10, 8), dtype=np.float32)
+            monster_observation = np.zeros((5, 30), dtype=np.float32)
+            map_observation = np.zeros((100, 4), dtype=np.float32)
+            relic_observation = np.zeros((30, 2), dtype=np.float32)
+            extra_info = np.zeros((5,), dtype=np.float32)
+            potion_observation = np.zeros((5, 4), dtype=np.float32)
+            deck_observation = np.zeros((100, 8), dtype=np.float32) 
+            screen_observation = np.zeros((50,), dtype=np.float32)
+
+            return {
+                "player": player_observation,
+                "hand": hand_observation,
+                "monsters": monster_observation,
+                "map": map_observation,
+                "relics": relic_observation,
+                "deck": deck_observation,
+                "potion": potion_observation,
+                "screen": screen_observation, 
+                "extra_info": extra_info
+            }
+
+        game_state = state["game_state"]
+        combat_state = game_state.get("combat_state", None)
+
+        player_observation = get_player_observation(game_state)
+        potion_observation = get_potion_observation(game_state)
+        monster_observation = get_monster_observation(game_state)
+        map_observation = get_map_observation(game_state)
+        relic_observation = get_relic_observation(game_state)
+        extra_info_observation = get_extra_info_observation(game_state)
+        hand_observation = get_hand_observation(combat_state)
+        extra_info = get_extra_info_observation(game_state)
+        deck_observation = get_deck_observation(state)
+        screen_observation = get_screen_observation(state)
+
+        # Combine them into a full observation
+        return {
+            "player": player_observation,
+            "hand": hand_observation,
+            "potion": potion_observation,
+            "deck": deck_observation,
+            "monsters": monster_observation,
+            "map": map_observation,
+            "relics": relic_observation,
+            "screen": screen_observation,
+            "extra_info": extra_info_observation,
+        }
+
 
     def reset(self, seed=None, options=None):
+        """
+        Resets the environment to an initial state for the next episode.
+        It relies on the external process to provide the game state.
+        """
+        # Reset internal variables
         self.current_command = None
         self.current_args = {}
         self.previous_state = None
-        self.state = self.state  # Initialize the state to the initial state
-        invalid_action_mask = self.get_invalid_action_mask()
-        self.state['invalid_action_mask'] = invalid_action_mask
-        return self.state
+        self.curr_action = None
+        self.action_taken = False
 
-    def step(self, action, game_state):
-        # Store the current state and action as the previous ones for reference
-        self.previous_state = self.state
+        # Expect that the initial state is passed in via an external process
+        # The state is already set externally, so we use self.state here
+        if self.state is None:
+            raise ValueError("Initial state must be provided by the external process.")
+
+        # Generate and return the observation based on the current state
+        observation = self.flatten_observation(self.state)
+
+        # Generate the invalid action mask based on the current state
+        invalid_action_mask = self.get_invalid_action_mask()
+
+        # Return the observation and invalid action mask for PPO
+        return observation, {"invalid_action_mask": invalid_action_mask}
+
+    def step(self, action):
         self.previous_action = self.curr_action
         self.curr_action = action
 
-        # Attempt to update the state with the new game state
-        if 'error' in game_state:
-            # If the new state is an error, retain the previous state
-            print("Error in game state detected. Retaining previous state.")
-            self.state = self.previous_state
-        else:
-            # Update to the new game state
-            self.state = game_state
-        
-        if self.actions[action] == 'END':
-            self.action_taken = False  # Reset at the start of the next turn
-
-        if self.actions[action].startswith(('PLAY', 'POTION Use')):
-            print("combat action taken")
-            self.action_taken = True
-
-        # Get the command string corresponding to the current action
-        command_str = self.actions[self.curr_action]
+        # Add the action to the recent action list
+        if len(self.recent_actions) >= self.recent_action_limit:
+            self.recent_actions.pop(0)  # Remove the oldest action if we've exceeded the limit
+        self.recent_actions.append(self.actions[action])
 
         # Calculate the reward based on the action taken and state transition
         reward = self.calculate_reward()
@@ -155,93 +202,113 @@ class SlayTheSpireEnv(gym.Env):
 
         # Generate and update the invalid action mask for the current state
         invalid_action_mask = self.get_invalid_action_mask()
-        self.state['invalid_action_mask'] = invalid_action_mask
 
-        # Return the updated state, reward, done flag, and the command string
-        return self.state, reward, done, {command_str}
+        # Flatten the observation based on the new game state
+        observation = self.flatten_observation(self.state)
 
+        # Return the observation, reward, done flag, and additional info (e.g., command string)
+        return observation, reward, done, {"invalid_action_mask": invalid_action_mask, "command": self.actions[action]}
+    
+    def update_game_state(self, state):
+        self.previous_state = copy.deepcopy(self.state) 
+        self.state = state
 
     def calculate_reward(self):
         reward = 0
-        previous_game_state = self.previous_state.get('game_state')
-        current_game_state = self.state.get('game_state')
-        
-        if previous_game_state and current_game_state:
-            if self.previous_action is not None:
+        # Check if previous_state and current state exist
+        if self.previous_state is None or self.state is None:
+            return reward
 
-                # Reward for making a choice
-                previous_choices = previous_game_state.get('choice_list', [])
-                current_choices = current_game_state.get('choice_list', [])
-                if previous_choices != current_choices:
-                    reward += 5
+        previous_game_state = self.previous_state.get('game_state', None)
+        current_game_state = self.state.get('game_state', None)
 
-                # Check for combat state changes (monsters' health)
-                previous_combat_state = previous_game_state.get('combat_state', {})
-                current_combat_state = current_game_state.get('combat_state', {})
-                previous_monsters = previous_combat_state.get('monsters', [])
-                current_monsters = current_combat_state.get('monsters', [])
+        # Check if game states exist
+        if previous_game_state is None or current_game_state is None:
+            return reward
+
+        previous_combat_state = previous_game_state.get('combat_state', {})
+        current_combat_state = current_game_state.get('combat_state', {})
+        previous_monsters = previous_combat_state.get('monsters', [])
+        current_monsters = current_combat_state.get('monsters', [])
+
+        if len(previous_combat_state) > 0:
+            for prev_monster, curr_monster in zip(previous_monsters, current_monsters):
+                if curr_monster.get('current_hp', 0) < prev_monster.get('current_hp', 0):
+                    print("Monster Damaged Reward ", self.actions[self.previous_action])
+                    health_diff = prev_monster.get('current_hp', 0) - curr_monster.get('current_hp', 0)
+                    reward += health_diff
+                    if prev_monster.get('current_hp', 0) == 0:
+                        print("Monster Defeated Reward", self.actions[self.previous_action])
+                        reward += 20
+
+        if self.previous_state.get("screen_type", None) == "NONE" and self.state.get("screen_type", None) == "COMBAT_REWARD":
+            print("Combat Ended Reward ")
+            reward += 40
+
+        # Penalty for taking damage
+        previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
+        current_hp = current_game_state.get('player', {}).get('current_hp', 0)
+        if current_hp < previous_hp:
+            print("HP Damage Penalty ", self.actions[self.previous_action])
+            reward -= (previous_hp - current_hp) * 3
                 
-                # Reward for doing damage and defeating a monster
-                for prev_monster, curr_monster in zip(previous_monsters, current_monsters):
-                    if prev_monster.get('current_hp', 0) > curr_monster.get('current_hp', 0):
-                        reward += (prev_monster['current_hp'] - curr_monster['current_hp'])
-                    if prev_monster.get('current_hp', 0) > 0 and curr_monster.get('current_hp', 0) <= 0:
-                        reward += 40
-
-                # Penalty for taking damage
-                previous_hp = previous_game_state.get('player', {}).get('current_hp', 0)
-                current_hp = current_game_state.get('player', {}).get('current_hp', 0)
-                if current_hp < previous_hp:
-                    reward -= (previous_hp - current_hp)
+        # Check for floor progression
+        if current_game_state.get('floor', 0) > previous_game_state.get('floor', 0):
+            print("Floor Climbing Reward ", self.actions[self.previous_action])
+            reward += 10
                 
-                # Check for floor progression
-                if current_game_state.get('floor', 0) > previous_game_state.get('floor', 0):
-                    reward += 100
-                
-                # Additional reward for potion use
-                if self.actions[self.previous_action].startswith('POTION Use'):
-                    reward += 10
+        # Additional reward for potion use
+        if self.actions[self.previous_action].startswith('POTION Use'):
+            print("Potion Use Reward ", self.actions[self.previous_action])
+            reward += 10
 
-                if self.actions[self.previous_action].startswith('POTION Discard'):
-                    reward -= 20
+        if self.actions[self.previous_action].startswith('POTION Discard'):
+            print("Potion Discard Penalty ", self.actions[self.previous_action])
+            reward -= 20
 
-                # Reward for acquiring a relic
-                previous_relics = previous_game_state.get('relics', [])
-                current_relics = current_game_state.get('relics', [])
-                if len(current_relics) > len(previous_relics):
-                    reward += 50  # Adjust the reward value as you see fit
+        # Reward for acquiring a relic
+        previous_relics = previous_game_state.get('relics', [])
+        current_relics = current_game_state.get('relics', [])
+        if len(current_relics) > len(previous_relics):
+            print("Relic taken reward ", self.actions[self.previous_action])
+            reward += 50  # Adjust the reward value as you see fit
 
-                # Reward/Penalty for gold changes
-                previous_gold = previous_game_state.get('gold', 0)
-                current_gold = current_game_state.get('gold', 0)
-                gold_difference = current_gold - previous_gold
-                if gold_difference > 0:
-                    reward += (gold_difference / 10)  # 1 point for each 10 gold gained
-                elif gold_difference < 0:
-                    reward += (gold_difference * 0.05)  # -0.05 points for each gold lost
+        # Reward/Penalty for gold changes
+        previous_gold = previous_game_state.get('gold', 0)
+        current_gold = current_game_state.get('gold', 0)
+        gold_difference = current_gold - previous_gold
+        if gold_difference > 0:
+            print("Gold Gained Reward ", self.actions[self.previous_action])
+            reward += (gold_difference / 10)  # 1 point for each 10 gold gained
+        elif gold_difference < 0:
+            print("Gold Lost Penalty ", self.actions[self.previous_action])
+            reward += (gold_difference * 0.05)  # -0.05 points for each gold lost
 
-                # Reward for adding a card to the deck
-                previous_deck = previous_game_state.get('deck', [])
-                current_deck = current_game_state.get('deck', [])
-                if len(current_deck) > len(previous_deck):
-                    new_card = current_deck[-1]  # Assuming the new card is added at the end
-                    rarity = new_card.get('rarity', 'COMMON').upper()  # Default to 'COMMON' if rarity is not found
-                    if rarity == 'COMMON':
-                        reward += 3
-                    elif rarity == 'UNCOMMON':
-                        reward += 4.3
-                    elif rarity == 'RARE':
-                        reward += 10
+        # Reward for adding a card to the deck
+        previous_deck = previous_game_state.get('deck', [])
+        current_deck = current_game_state.get('deck', [])
+        if len(current_deck) > len(previous_deck):
+            new_card = current_deck[-1]  # Assuming the new card is added at the end
+            rarity = new_card.get('rarity', 'COMMON').upper()  # Default to 'COMMON' if rarity is not found
+            if rarity == 'COMMON':
+                print("Common Card Reward ", self.actions[self.previous_action])
+                reward += 3
+            elif rarity == 'UNCOMMON':
+                print("Uncommon Card Reward", self.actions[self.previous_action])
+                reward += 4.3
+            elif rarity == 'RARE':
+                print("Rare Card Reward ", self.actions[self.previous_action])
+                reward += 10
 
-                # Reward for removing CURSE cards from the deck
-                previous_curse_count = sum(1 for card in previous_deck if card.get('rarity', '').upper() == 'CURSE')
-                current_curse_count = sum(1 for card in current_deck if card.get('rarity', '').upper() == 'CURSE')
-                if current_curse_count < previous_curse_count:
-                    reward += 15
+        # Reward for removing CURSE cards from the deck
+        previous_curse_count = sum(1 for card in previous_deck if card.get('rarity', '').upper() == 'CURSE')
+        current_curse_count = sum(1 for card in current_deck if card.get('rarity', '').upper() == 'CURSE')
+        if current_curse_count < previous_curse_count:
+            print("Curse Removal Reward ", self.actions[self.previous_action])
+            reward += 15
 
-
+        # Return the calculated reward
         return reward
-
 
 
     def check_if_done(self):
@@ -253,6 +320,7 @@ class SlayTheSpireEnv(gym.Env):
             return False
 
     def get_invalid_action_mask(self):
+        
         invalid_action_mask = np.zeros(len(self.actions), dtype=bool)
 
         # Process available commands
@@ -317,7 +385,7 @@ class SlayTheSpireEnv(gym.Env):
         # Prevent "RETURN" action immediately after "PROCEED"
         if self.previous_action is not None:
             previous_command = self.actions[self.previous_action].split()[0].lower()
-            if previous_command == 'proceed':
+            if previous_command == 'proceed' or previous_command == "choose" or "return":
                 for i, action in enumerate(self.actions):
                     if action.split()[0].lower() == 'return':
                         invalid_action_mask[i] = True
@@ -372,12 +440,20 @@ class SlayTheSpireEnv(gym.Env):
 
         return invalid_action_mask
 
+    def get_valid_actions(self, state):
+        # Extract available commands from the state
+        available_commands = state.get("available_commands", [])
 
+        # Print the available commands
+        print("Available Commands:", available_commands)
 
-    def get_valid_actions(self):
-        invalid_action_mask = self.get_invalid_action_mask()
-        valid_actions = [action for idx, action in enumerate(self.actions) if not invalid_action_mask[idx]]
-        print("Valid actions (filtered):", valid_actions)
+        # Apply the invalid action mask to filter out invalid actions
+        action_mask = self.get_invalid_action_mask(state)
+        valid_actions = [i for i, valid in enumerate(action_mask) if valid]
+
+        # Print the valid actions after applying the mask
+        print("Valid Actions After Mask:", valid_actions)
+
         return valid_actions
 
     def apply_invalid_action_mask(self, logits):
@@ -387,9 +463,10 @@ class SlayTheSpireEnv(gym.Env):
 
     def print_action_space_with_validity(self):
         invalid_action_mask = self.get_invalid_action_mask()
+        print("Valid Actions:")
         for idx, action in enumerate(self.actions):
-            valid = not invalid_action_mask[idx]
-            print(f"{action} - Valid: {valid}")
+            if not invalid_action_mask[idx]:  # Only print valid actions
+                print(f"{idx}: {action}")
 
 
 class MaskedSlayTheSpireEnv(gym.Wrapper):
@@ -398,8 +475,13 @@ class MaskedSlayTheSpireEnv(gym.Wrapper):
         self.action_space = spaces.Discrete(env.action_space.n)
         self.observation_space = env.observation_space
 
-    def step(self, action, game_state):
-        state, reward, done, info = self.env.step(action, game_state)
+    def step(self, action):
+        # Call the base environment's step function with only the action argument
+        state, reward, done, info = self.env.step(action)
+        
+        # Generate the invalid action mask based on the current state
         invalid_action_mask = self.env.get_invalid_action_mask()
+        # Add the invalid action mask to the observation (state)
         state['invalid_action_mask'] = invalid_action_mask
+        
         return state, reward, done, info
