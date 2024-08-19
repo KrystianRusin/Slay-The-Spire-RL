@@ -108,6 +108,7 @@ The observation space is a dictionary composed of multiple components, each corr
 
 The action space is a discrete space representing various in-game actions such as:
 
+- Starting the game
 - Playing a card
 - Using or discarding a potion
 - Proceeding to the next screen
