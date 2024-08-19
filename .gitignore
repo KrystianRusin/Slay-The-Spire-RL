@@ -8,6 +8,5 @@ __pycache__/
 # Ignore venv directory
 venv/
 
-# Ignore all .h5f files
-dqn_weights.h5f.index
-dqn_weights.h5f.data-00000-of-00001
+ppo_slay_the_spire.zip
+performance_metrics.png
