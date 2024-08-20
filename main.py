@@ -3,14 +3,13 @@ import socket
 import time
 import os
 import numpy as np
-import torch
-import stable_baselines3 as sb3
-from stable_baselines3.common.vec_env import DummyVecEnv
-from stable_baselines3.common.policies import ActorCriticPolicy
+import torch as th
+from stable_baselines3.common.buffers import RolloutBuffer
 from stable_baselines3.ppo import PPO
-from slay_the_spire_env import SlayTheSpireEnv, MaskedSlayTheSpireEnv
+from custom_rollout_buffer import CustomRolloutBuffer
 import matplotlib.pyplot as plt
 from collections import deque
+from slay_the_spire_env import SlayTheSpireEnv
 
 # Function to plot performance metrics with separate subplots for rewards, rolling averages, and episode lengths
 def plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward, save_path="performance_metrics.png"):
@@ -70,8 +69,7 @@ def main():
     client_socket.connect(("localhost", 9999))
 
     # Initialize the environment
-    unmasked_env = SlayTheSpireEnv({})
-    env = MaskedSlayTheSpireEnv(unmasked_env)
+    env = SlayTheSpireEnv({})
 
     # Initialize PPO agent with MultiInputPolicy to handle dict observation spaces
     model = PPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1)
@@ -81,11 +79,23 @@ def main():
         print("Loading existing model weights...")
         model = PPO.load("ppo_slay_the_spire", env=env)
 
+    # Initialize the rollout buffer
+    n_steps = 2048
+    rollout_buffer = CustomRolloutBuffer(
+        buffer_size=n_steps,
+        observation_space=env.observation_space,
+        action_space=env.action_space,
+        device=model.device,
+        gamma=model.gamma,
+        gae_lambda=model.gae_lambda,
+        n_envs=1
+    )
     episode = 0
     while True:
         done = False
         total_reward = 0
         episode_length = 0
+        obs = env.reset()
 
         while not done:
             # Receive the next game state via socket
@@ -98,45 +108,52 @@ def main():
             print("Game State Received")
 
             # Update the environment's internal state with the new game state
-            unmasked_env.update_game_state(game_state)
+            env.update_game_state(game_state)
 
-            # Ensure the invalid action mask is recalculated with the new state
-            invalid_action_mask = env.get_invalid_action_mask()
+            # Flatten the observation
+            obs = env.flatten_observation(game_state)
 
-            # Debug: Print available commands and valid actions after the mask is applied
-            available_commands = game_state.get('available_commands', [])
-            print("Available Commands:", available_commands)
+            # Predict the action using the PPO model
+            action, _states = model.predict(obs)
 
-            # Print the action space with validity (for debugging purposes)
-            env.print_action_space_with_validity()
-
-            # Predict the next action using the PPO model
-            observation = env.flatten_observation(game_state)
-
-            # Predict the action using the model
-            action_logits, _states = model.predict(observation)
-
-            # Apply the invalid action mask to the action logits
-            masked_logits = np.where(invalid_action_mask, -1e8, action_logits)
-
-            # Choose the action with the highest valid value
-            chosen_action = np.argmax(masked_logits)
-            chosen_command = env.actions[chosen_action]
-            print(f"Chosen Action: {chosen_action}, Command: {chosen_command}")
+            chosen_command = env.actions[action]
+            print(f"Chosen Action: {action}, Command: {chosen_command}")
 
             # Send the chosen command to the game
             client_socket.sendall(chosen_command.encode('utf-8'))
 
             # Step through the environment, passing only the action
-            observation, reward, done, info = env.step(chosen_action)
-
-            # Accumulate reward and step count
+            obs, reward, done, info = env.step(action)
             total_reward += reward
-            print("TOTAL REWARD", total_reward)
+            print("REWARD: ", total_reward)
             episode_length += 1
-            print("\n")
 
-        # Update performance metrics at the end of the episode
+            obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(model.device) for key, value in obs.items()}
+
+            # Convert action to tensor
+            action_tensor = th.tensor(action, dtype=th.long).to(model.device)
+
+            # Predict log_prob and values
+            values, log_prob, entropy = model.policy.evaluate_actions(obs_tensor, action_tensor)
+            values = model.policy.predict_values(obs_tensor)
+
+            # Store experience in the rollout buffer
+            rollout_buffer.add(
+                obs_tensor,
+                action_tensor,
+                reward,
+                done,
+                values,
+                log_prob
+            )
+
+            # If the buffer is full, update the model
+            if len(rollout_buffer) >= n_steps:
+                rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(obs_tensor), dones=done)
+                update_model(model, rollout_buffer)
+                rollout_buffer.reset()
+
+        # Episode ended: update performance metrics
         episode_rewards.append(total_reward)
         episode_lengths.append(episode_length)
         reward_queue.append(total_reward)
@@ -161,6 +178,33 @@ def main():
 
     client_socket.close()
 
+def update_model(model, rollout_buffer):
+    n_epochs = 10
+    batch_size = 64
+    for epoch in range(n_epochs):
+        for rollout_data in rollout_buffer.get(batch_size):
+            actions = rollout_data.actions.long().flatten()
+
+            values, log_prob, entropy = model.policy.evaluate_actions(rollout_data.observations, actions)
+
+            # Compute the loss
+            advantages = rollout_data.advantages
+            ratio = th.exp(log_prob - rollout_data.old_log_prob)
+            policy_loss_1 = advantages * ratio
+            policy_loss_2 = advantages * th.clamp(ratio, 1 - model.clip_range, 1 + model.clip_range)
+            policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
+
+            value_loss = th.nn.functional.mse_loss(rollout_data.returns, values.flatten())
+            entropy_loss = -th.mean(entropy)
+
+            # Combine losses
+            loss = policy_loss + model.ent_coef * entropy_loss + model.vf_coef * value_loss
+
+            # Backpropagate the loss and update the model
+            model.policy.optimizer.zero_grad()
+            loss.backward()
+            th.nn.utils.clip_grad_norm_(model.policy.parameters(), model.max_grad_norm)
+            model.policy.optimizer.step()
 
 if __name__ == "__main__":
     main()
