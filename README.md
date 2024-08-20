@@ -1,6 +1,6 @@
 # Slay the Spire PPO Agent
 
-This project implements a reinforcement learning agent using Proximal Policy Optimization (PPO) to play the game *Slay the Spire*. The agent interacts with the game via a socket connection through a middleman process, processes the game state, and learns to improve its actions through training.
+This project implements a reinforcement learning agent using Proximal Policy Optimization (PPO) to play the game *Slay the Spire*. The agent interacts with the game via a socket connection through a middleman process, processes the game state, and learns to improve its actions through training. Still undergoing development.
 
 ## Table of Contents
 
