@@ -92,8 +92,6 @@ def main():
     rolling_avg_rewards = []
     reward_queue = deque(maxlen=10)  # Rolling window for the last 10 rewards
     highest_reward = float('-inf')  # Initialize highest reward as negative infinity
-    previous_obs_tensor = None
-    previous_action_tensor = None
 
     # Establish socket connection to receive the game state
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -111,7 +109,9 @@ def main():
         model = PPO.load("ppo_slay_the_spire", env=env)
 
     # Initialize the rollout buffer
-    n_steps = 2048
+    n_steps = 2048  # Number of steps to collect before updating the model
+    total_steps = 100000  # Define the total number of training steps you plan to run
+
     rollout_buffer = CustomRolloutBuffer(
         buffer_size=n_steps,
         observation_space=env.observation_space,
@@ -121,6 +121,9 @@ def main():
         gae_lambda=model.gae_lambda,
         n_envs=1
     )
+
+    current_step = 0  # Track the number of steps completed
+
     episode = 0
     while True:
         done = False
@@ -144,6 +147,8 @@ def main():
             # Flatten the observation
             obs = env.flatten_observation(game_state)
 
+            obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(model.device) for key, value in obs.items()}
+
             # Predict the action using the PPO model
             action, _states = model.predict(obs)
 
@@ -154,12 +159,12 @@ def main():
             client_socket.sendall(chosen_command.encode('utf-8'))
 
             # Step through the environment, passing only the action
-            obs, reward, done, info = env.step(action)
+            new_obs, reward, done, info = env.step(action)
             total_reward += reward
             print("REWARD: ", total_reward)
             episode_length += 1
 
-            obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(model.device) for key, value in obs.items()}
+            new_obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(model.device) for key, value in new_obs.items()}
 
             # Convert action to tensor
             action_tensor = th.tensor(action, dtype=th.long).to(model.device)
@@ -168,30 +173,25 @@ def main():
             values, log_prob, entropy = model.policy.evaluate_actions(obs_tensor, action_tensor)
             values = model.policy.predict_values(obs_tensor)
 
-            if previous_obs_tensor is not None and previous_action_tensor is not None:
-                # Store the reward for the previous step in the rollout buffer
-                values, log_prob, entropy = model.policy.evaluate_actions(previous_obs_tensor, previous_action_tensor)
-                rollout_buffer.add(
-                    previous_obs_tensor,
-                    previous_action_tensor,
-                    reward,  # Reward received for taking the previous action
-                    done,
-                    values,
-                    log_prob
-                )
-            
-            previous_obs_tensor = obs_tensor
-            previous_action_tensor = th.tensor(action, dtype=th.long).to(model.device)
+            # Store experience in the rollout buffer
+            rollout_buffer.add(
+                obs_tensor,
+                action_tensor,
+                reward,
+                done,
+                values,
+                log_prob
+            )
+
+            obs = new_obs
+
+            current_step += 1  # Increment the current step count
 
             # If the buffer is full, update the model
             if len(rollout_buffer) >= n_steps:
-                rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(obs_tensor), dones=done)
-                update_model(model, rollout_buffer)
+                rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
+                update_model(model, rollout_buffer, current_step, total_steps)
                 rollout_buffer.reset()
-            
-            if done:
-                handle_end_of_episode(client_socket)
-                break
 
         # Episode ended: update performance metrics
         episode_rewards.append(total_reward)
@@ -218,23 +218,41 @@ def main():
 
     client_socket.close()
 
-def update_model(model, rollout_buffer):
+def update_model(model, rollout_buffer, current_step, total_steps):
     n_epochs = 10
     batch_size = 64
+    
+    # Calculate progress_remaining (from 1.0 to 0.0)
+    progress_remaining = 1 - (current_step / total_steps)
+    
     for epoch in range(n_epochs):
         for rollout_data in rollout_buffer.get(batch_size):
-            actions = rollout_data.actions.long().flatten()
+            # Access the actions using the dictionary key
+            actions = th.tensor(rollout_data["actions"], dtype=th.long).flatten().to(model.device)
 
-            values, log_prob, entropy = model.policy.evaluate_actions(rollout_data.observations, actions)
+            # Access the observations using the dictionary key
+            observations = rollout_data["observations"]  # This will be a dictionary of observation components
+
+            # Convert the observations dictionary back to the format that the model expects (e.g., a tensor or dict of tensors)
+            observations_tensor = {key: th.tensor(value).to(model.device) for key, value in observations.items()}
+
+            # Evaluate actions using the model's policy
+            values, log_prob, entropy = model.policy.evaluate_actions(observations_tensor, actions)
 
             # Compute the loss
-            advantages = rollout_data.advantages
-            ratio = th.exp(log_prob - rollout_data.old_log_prob)
+            advantages = th.tensor(rollout_data["advantages"]).to(model.device)
+            log_probs_old = th.tensor(rollout_data["log_probs"]).to(model.device)
+
+            ratio = th.exp(log_prob - log_probs_old)
+
+            # Pass progress_remaining to the clip_range function
+            clip_range = model.clip_range(progress_remaining)
             policy_loss_1 = advantages * ratio
-            policy_loss_2 = advantages * th.clamp(ratio, 1 - model.clip_range, 1 + model.clip_range)
+            policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
             policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
 
-            value_loss = th.nn.functional.mse_loss(rollout_data.returns, values.flatten())
+            returns = th.tensor(rollout_data["returns"]).to(model.device)
+            value_loss = th.nn.functional.mse_loss(returns, values.flatten())
             entropy_loss = -th.mean(entropy)
 
             # Combine losses
