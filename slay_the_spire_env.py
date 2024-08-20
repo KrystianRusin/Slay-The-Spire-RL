@@ -2,7 +2,7 @@ import gymnasium as gym
 import copy
 import numpy as np
 from gymnasium import spaces
-from tokenizers import screen_type_tokenizer, potion_tokenizer
+from tokenizers import screen_type_tokenizer
 
 from observations.player_observations import get_player_observation
 from observations.hand_observations import get_hand_observation
@@ -14,10 +14,6 @@ from observations.extra_info_observations import get_extra_info_observation
 from observations.deck_observations import get_deck_observation
 from observations.screen_observations import get_screen_observation
 
-import gymnasium as gym
-import numpy as np
-from gymnasium import spaces
-
 class SlayTheSpireEnv(gym.Env):
     def __init__(self, initial_state):
         super(SlayTheSpireEnv, self).__init__()
@@ -25,7 +21,7 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.previous_action = None
         self.curr_action = None
-        self.action_taken = False# Define the available commands and action space permutations
+        self.action_taken = False  # Define the available commands and action space permutations
         self.recent_actions = []  # Store recent actions to avoid loops
         self.recent_action_limit = 5
         self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose', 'confirm', "leave"]
@@ -48,7 +44,7 @@ class SlayTheSpireEnv(gym.Env):
                 actions.append(f'POTION {use_discard} {potion_slot}')
         for card_index in range(1, 10):
             for target_index in range(5):
-                actions.append(f'PLAY {card_index } {target_index}')
+                actions.append(f'PLAY {card_index} {target_index}')
         for card_index in range(1, 10):
             actions.append(f'PLAY {card_index}')
         actions.extend(['END', 'PROCEED', 'RETURN', 'CONFIRM', "LEAVE"])
@@ -59,14 +55,13 @@ class SlayTheSpireEnv(gym.Env):
     def create_observation_space(self):
 
         # Player observation space (current_hp, max_hp, block, energy, powers)
-        # 4 player stats + 20 powers (assuming a max of 20 powers for flexibility)
-        player_space = spaces.Box(low=0, high=1, shape=(4 + 20,), dtype=np.float32)  # 4 stats + max 20 powers
+        player_space = spaces.Box(low=0, high=1, shape=(4 + 20,), dtype=np.float32)
 
         # Hand observation space (max 10 cards, with 8 attributes per card)
         hand_space = spaces.Box(low=0, high=1, shape=(10, 8), dtype=np.float32)
 
         # Monster observation space (max 5 monsters, with 10 attributes per monster + 20 powers)
-        monster_space = spaces.Box(low=0, high=1, shape=(5, 10 + 20), dtype=np.float32)  # 10 attributes + max 20 powers per monster
+        monster_space = spaces.Box(low=0, high=1, shape=(5, 10 + 20), dtype=np.float32)
 
         # Map observation space (max 100 map nodes, with 4 attributes per node)
         map_space = spaces.Box(low=0, high=10, shape=(100, 4), dtype=np.float32)
@@ -76,7 +71,7 @@ class SlayTheSpireEnv(gym.Env):
 
         deck_space = spaces.Box(low=0, high=1, shape=(100, 8), dtype=np.float32)
 
-        potion_space = spaces.Box(low=0, high=1, shape=(5, 4), dtype=np.float32)  # 5 potions, 4 attributes each
+        potion_space = spaces.Box(low=0, high=1, shape=(5, 4), dtype=np.float32)
 
         screen_space = spaces.Box(low=0, high=1, shape=(50,), dtype=np.float32)
 
@@ -137,7 +132,6 @@ class SlayTheSpireEnv(gym.Env):
         relic_observation = get_relic_observation(game_state)
         extra_info_observation = get_extra_info_observation(game_state)
         hand_observation = get_hand_observation(combat_state)
-        extra_info = get_extra_info_observation(game_state)
         deck_observation = get_deck_observation(state)
         screen_observation = get_screen_observation(state)
 
@@ -154,12 +148,7 @@ class SlayTheSpireEnv(gym.Env):
             "extra_info": extra_info_observation,
         }
 
-
     def reset(self, seed=None, options=None):
-        """
-        Resets the environment to an initial state for the next episode.
-        It relies on the external process to provide the game state.
-        """
         # Reset internal variables
         self.current_command = None
         self.current_args = {}
@@ -168,18 +157,12 @@ class SlayTheSpireEnv(gym.Env):
         self.action_taken = False
 
         # Expect that the initial state is passed in via an external process
-        # The state is already set externally, so we use self.state here
         if self.state is None:
             raise ValueError("Initial state must be provided by the external process.")
 
-        # Generate and return the observation based on the current state
         observation = self.flatten_observation(self.state)
 
-        # Generate the invalid action mask based on the current state
-        invalid_action_mask = self.get_invalid_action_mask()
-
-        # Return the observation and invalid action mask for PPO
-        return observation, {"invalid_action_mask": invalid_action_mask}
+        return observation
 
     def step(self, action):
         self.previous_action = self.curr_action
@@ -187,7 +170,7 @@ class SlayTheSpireEnv(gym.Env):
 
         # Add the action to the recent action list
         if len(self.recent_actions) >= self.recent_action_limit:
-            self.recent_actions.pop(0)  # Remove the oldest action if we've exceeded the limit
+            self.recent_actions.pop(0)
         self.recent_actions.append(self.actions[action])
 
         # Calculate the reward based on the action taken and state transition
@@ -200,24 +183,39 @@ class SlayTheSpireEnv(gym.Env):
         self.current_command = None
         self.current_args = {}
 
-        # Generate and update the invalid action mask for the current state
-        invalid_action_mask = self.get_invalid_action_mask()
-
         # Flatten the observation based on the new game state
         observation = self.flatten_observation(self.state)
 
-        # Return the observation, reward, done flag, and additional info (e.g., command string)
-        return observation, reward, done, {"invalid_action_mask": invalid_action_mask, "command": self.actions[action]}
-    
+        return observation, reward, done, {}
+
+    def get_valid_actions(self):
+        available_commands = self.state.get('available_commands', [])
+        valid_actions = [i for i, action in enumerate(self.actions) if action.split()[0].lower() in available_commands]
+        return valid_actions
+
     def update_game_state(self, state):
         self.previous_state = copy.deepcopy(self.state) 
         self.state = state
 
     def calculate_reward(self):
         reward = 0
+        invalid_action_mask = self.get_invalid_action_mask(self.previous_state)
         # Check if previous_state and current state exist
         if self.previous_state is None or self.state is None:
             return reward
+
+        if self.previous_action is not None and invalid_action_mask[self.previous_action]:
+            print("Invalid Action Taken Penalty")
+            reward -= 10
+            return reward
+
+        if self.previous_action is not None and not invalid_action_mask[self.previous_action]:
+            print("Valid action taken")
+            reward += 10
+
+        if self.previous_action is not None and self.actions[self.previous_action].startswith("CHOOSE"):
+            print("Choose reward")
+            reward += 5
 
         previous_game_state = self.previous_state.get('game_state', None)
         current_game_state = self.state.get('game_state', None)
@@ -225,10 +223,6 @@ class SlayTheSpireEnv(gym.Env):
         # Check if game states exist
         if previous_game_state is None or current_game_state is None:
             return reward
-        
-        if self.previous_action is not None and self.actions[self.previous_action].startswith("CHOOSE"):
-            print("Choose reward")
-            reward += 5
 
         previous_combat_state = previous_game_state.get('combat_state', {})
         current_combat_state = current_game_state.get('combat_state', {})
@@ -313,29 +307,19 @@ class SlayTheSpireEnv(gym.Env):
 
         # Return the calculated reward
         return reward
-
-
-    def check_if_done(self):
-            game_state = self.state.get("game_state", None)
-            if not game_state:
-                return False
-            if self.state['game_state'].get('screen_type') == "GAME_OVER":
-                return True
-            return False
-
-    def get_invalid_action_mask(self):
-        
+    
+    def get_invalid_action_mask(self, state):
         invalid_action_mask = np.zeros(len(self.actions), dtype=bool)
 
         # Process available commands
-        available_commands = self.state.get('available_commands', [])
+        available_commands = state.get('available_commands', [])
         for i, action in enumerate(self.actions):
             command = action.split()[0].lower()
             if command not in available_commands:
                 invalid_action_mask[i] = True
 
         # Check if 'game_state' exists
-        game_state = self.state.get('game_state', None)
+        game_state = state.get('game_state', None)
         if not game_state:
             # If game_state doesn't exist, all actions are invalid
             return np.ones(len(self.actions), dtype=bool)
@@ -442,48 +426,8 @@ class SlayTheSpireEnv(gym.Env):
 
         return invalid_action_mask
 
-    def get_valid_actions(self, state):
-        # Extract available commands from the state
-        available_commands = state.get("available_commands", [])
-
-        # Print the available commands
-        print("Available Commands:", available_commands)
-
-        # Apply the invalid action mask to filter out invalid actions
-        action_mask = self.get_invalid_action_mask(state)
-        valid_actions = [i for i, valid in enumerate(action_mask) if valid]
-
-        # Print the valid actions after applying the mask
-        print("Valid Actions After Mask:", valid_actions)
-
-        return valid_actions
-
-    def apply_invalid_action_mask(self, logits):
-        invalid_action_mask = self.get_invalid_action_mask()
-        adjusted_logits = np.where(invalid_action_mask, -1e8, logits)
-        return adjusted_logits
-
-    def print_action_space_with_validity(self):
-        invalid_action_mask = self.get_invalid_action_mask()
-        print("Valid Actions:")
-        for idx, action in enumerate(self.actions):
-            if not invalid_action_mask[idx]:  # Only print valid actions
-                print(f"{idx}: {action}")
-
-
-class MaskedSlayTheSpireEnv(gym.Wrapper):
-    def __init__(self, env):
-        super(MaskedSlayTheSpireEnv, self).__init__(env)
-        self.action_space = spaces.Discrete(env.action_space.n)
-        self.observation_space = env.observation_space
-
-    def step(self, action):
-        # Call the base environment's step function with only the action argument
-        state, reward, done, info = self.env.step(action)
-        
-        # Generate the invalid action mask based on the current state
-        invalid_action_mask = self.env.get_invalid_action_mask()
-        # Add the invalid action mask to the observation (state)
-        state['invalid_action_mask'] = invalid_action_mask
-        
-        return state, reward, done, info
+    def check_if_done(self):
+        game_state = self.state.get("game_state", None)
+        if not game_state:
+            return False
+        return self.state['game_state'].get('screen_type') == "GAME_OVER"
