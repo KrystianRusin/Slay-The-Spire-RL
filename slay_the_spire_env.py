@@ -201,7 +201,7 @@ class SlayTheSpireEnv(gym.Env):
         reward = 0
         invalid_action_mask = self.get_invalid_action_mask(self.previous_state)
         # Check if previous_state and current state exist
-        if self.previous_state is None or self.state is None:
+        if self.previous_state is None or self.state is None or self.previous_action is None:
             return reward
 
         if self.previous_action is not None and invalid_action_mask[self.previous_action]:

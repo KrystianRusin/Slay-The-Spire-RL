@@ -46,6 +46,35 @@ def plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewar
 
     print(f"Performance metrics saved to {save_path}")
 
+def handle_end_of_episode(client_socket):
+    """
+    Handles the end-of-episode scenario by sending the "PROCEED" command twice,
+    waiting for the game state to update between the two sends.
+    """
+    # First "PROCEED" command
+    proceed_command = "PROCEED"
+    client_socket.sendall(proceed_command.encode('utf-8'))
+    print("Sent 'PROCEED' command")
+
+    # Wait for the game state update
+    try:
+        game_state = receive_full_json(client_socket)
+        print("Game state received after first 'PROCEED'")
+    except json.JSONDecodeError as e:
+        print(f"Failed to decode JSON after first 'PROCEED': {e}")
+        return  # Exit if there's an error
+
+    # Second "PROCEED" command
+    client_socket.sendall(proceed_command.encode('utf-8'))
+    print("Sent 'PROCEED' command again")
+
+    # Optionally, wait for another game state update if needed
+    try:
+        game_state = receive_full_json(client_socket)
+        print("Game state received after second 'PROCEED'")
+    except json.JSONDecodeError as e:
+        print(f"Failed to decode JSON after second 'PROCEED': {e}")
+
 def receive_full_json(client_socket):
     data = b''
     while True:
@@ -159,6 +188,10 @@ def main():
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(obs_tensor), dones=done)
                 update_model(model, rollout_buffer)
                 rollout_buffer.reset()
+            
+            if done:
+                handle_end_of_episode(client_socket)
+                break
 
         # Episode ended: update performance metrics
         episode_rewards.append(total_reward)
