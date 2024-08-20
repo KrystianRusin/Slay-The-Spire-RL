@@ -63,6 +63,8 @@ def main():
     rolling_avg_rewards = []
     reward_queue = deque(maxlen=10)  # Rolling window for the last 10 rewards
     highest_reward = float('-inf')  # Initialize highest reward as negative infinity
+    previous_obs_tensor = None
+    previous_action_tensor = None
 
     # Establish socket connection to receive the game state
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -137,15 +139,20 @@ def main():
             values, log_prob, entropy = model.policy.evaluate_actions(obs_tensor, action_tensor)
             values = model.policy.predict_values(obs_tensor)
 
-            # Store experience in the rollout buffer
-            rollout_buffer.add(
-                obs_tensor,
-                action_tensor,
-                reward,
-                done,
-                values,
-                log_prob
-            )
+            if previous_obs_tensor is not None and previous_action_tensor is not None:
+                # Store the reward for the previous step in the rollout buffer
+                values, log_prob, entropy = model.policy.evaluate_actions(previous_obs_tensor, previous_action_tensor)
+                rollout_buffer.add(
+                    previous_obs_tensor,
+                    previous_action_tensor,
+                    reward,  # Reward received for taking the previous action
+                    done,
+                    values,
+                    log_prob
+                )
+            
+            previous_obs_tensor = obs_tensor
+            previous_action_tensor = th.tensor(action, dtype=th.long).to(model.device)
 
             # If the buffer is full, update the model
             if len(rollout_buffer) >= n_steps:

@@ -205,7 +205,7 @@ class SlayTheSpireEnv(gym.Env):
             return reward
 
         if self.previous_action is not None and invalid_action_mask[self.previous_action]:
-            print("Invalid Action Taken Penalty")
+            print("Invalid Action Taken Penalty ", self.actions[self.previous_action])
             reward -= 10
             return reward
 
