@@ -32,6 +32,8 @@ def get_screen_observation(game_state):
         observation = handle_card_reward_screen(screen_state, screen_type_token)
     elif screen_type == "BOSS_REWARD":
         observation = handle_boss_reward_screen(screen_state, screen_type_token)
+    elif screen_type == "GRID":
+        observation = handle_grid_screen(screen_state, screen_type_token)
     else:
         observation = handle_default_screen(screen_state, screen_type_token)
 
@@ -334,3 +336,60 @@ def handle_default_screen(screen_state, screen_type_token):
 
     # Return the screen_type_token followed by default values
     return np.concatenate(([screen_type_token], default_observation))
+
+def handle_grid_screen(screen_state, screen_type_token):
+    # Define maximum number of cards and selected cards for this screen
+    max_cards = 39
+    max_selected_cards = 5
+    
+    # Tokenize and process the `cards` list
+    cards_observation = []
+    for card in screen_state.get("cards", [])[:max_cards]:  # Process up to max_cards
+        card_observation = tokenize_card(card)  # Assuming `tokenize_card` is used here
+        cards_observation.append(card_observation)
+    
+    # Pad if fewer than max_cards
+    while len(cards_observation) < max_cards:
+        cards_observation.append([0.0] * 8)  # Assuming each card observation has 8 features
+    
+    # Flatten the cards observation
+    cards_observation = np.array(cards_observation, dtype=np.float32).flatten()
+    
+    # Process the `selected_cards` list, max 5 selected cards
+    selected_cards_observation = []
+    for card in screen_state.get("selected_cards", [])[:max_selected_cards]:
+        card_observation = tokenize_card(card)  # Assuming `tokenize_card` is used here
+        selected_cards_observation.append(card_observation)
+    
+    # Pad if fewer than max_selected_cards
+    while len(selected_cards_observation) < max_selected_cards:
+        selected_cards_observation.append([0.0] * 8)  # Assuming each card observation has 8 features
+    
+    # Flatten the selected cards observation
+    selected_cards_observation = np.array(selected_cards_observation, dtype=np.float32).flatten()
+    
+    # Handle boolean values
+    for_transform = float(screen_state.get("for_transform", False))
+    confirm_up = float(screen_state.get("confirm_up", False))
+    any_number = float(screen_state.get("any_number", False))
+    for_upgrade = float(screen_state.get("for_upgrade", False))
+    num_cards = float(screen_state.get("num_cards", 0))
+    for_purge = float(screen_state.get("for_purge", False))
+    
+    # Combine the observations
+    combined_observation = np.concatenate([
+        [screen_type_token],  # Screen type token
+        [for_transform, confirm_up, any_number, for_upgrade, num_cards, for_purge],  # Boolean values
+        cards_observation,  # Flattened cards observation
+        selected_cards_observation  # Flattened selected cards observation
+    ])
+    
+    # Ensure the observation is padded or truncated to 50 values
+    max_observation_size = 50
+    if len(combined_observation) < max_observation_size:
+        padding = np.zeros(max_observation_size - len(combined_observation), dtype=np.float32)
+        combined_observation = np.concatenate([combined_observation, padding])
+    elif len(combined_observation) > max_observation_size:
+        combined_observation = combined_observation[:max_observation_size]
+    
+    return combined_observation
