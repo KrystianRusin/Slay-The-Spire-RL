@@ -86,12 +86,70 @@ def receive_full_json(client_socket):
             if not part:
                 raise
 
+import json
+import socket
+import time
+import os
+import numpy as np
+import torch as th
+from stable_baselines3.common.buffers import RolloutBuffer
+from stable_baselines3.ppo import PPO
+from custom_rollout_buffer import CustomRolloutBuffer
+import matplotlib.pyplot as plt
+from collections import deque
+from slay_the_spire_env import SlayTheSpireEnv
+
+# Function to plot performance metrics with separate subplots for rewards, rolling averages, and episode lengths
+def plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward, update_rewards, save_path="performance_metrics.png"):
+    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 16))
+
+    # Plot total rewards on the first subplot
+    ax1.plot(range(len(episode_rewards)), episode_rewards, 'b-', label='Episode Reward')
+    ax1.axhline(y=highest_reward, color='r', linestyle='--', label=f'Highest Reward: {highest_reward}')
+    ax1.set_xlabel('Episode')
+    ax1.set_ylabel('Total Reward')
+    ax1.set_title('Episode Rewards')
+    ax1.legend()
+    ax1.grid(True)
+
+    # Plot rolling average rewards on the second subplot
+    ax2.plot(range(len(rolling_avg_rewards)), rolling_avg_rewards, 'g--', label='Rolling Avg Reward (Last 10)')
+    ax2.set_xlabel('Episode')
+    ax2.set_ylabel('Rolling Avg Reward')
+    ax2.set_title('Rolling Average of Rewards')
+    ax2.legend()
+    ax2.grid(True)
+
+    # Plot episode lengths on the third subplot
+    ax3.plot(range(len(episode_lengths)), episode_lengths, 'r-', label='Episode Length')
+    ax3.set_xlabel('Episode')
+    ax3.set_ylabel('Episode Length')
+    ax3.set_title('Episode Lengths')
+    ax3.grid(True)
+
+    # Plot rewards after model updates on the fourth subplot
+    ax4.plot(range(len(update_rewards)), update_rewards, 'm-', label='Update Reward')
+    ax4.set_xlabel('Update')
+    ax4.set_ylabel('Update Reward')
+    ax4.set_title('Rewards per Update')
+    ax4.legend()
+    ax4.grid(True)
+
+    # Adjust layout and save the figure
+    plt.tight_layout()
+    plt.savefig(save_path, format='png')
+    plt.close(fig)
+
+    print(f"Performance metrics saved to {save_path}")
+
 def main():
     episode_rewards = []
     episode_lengths = []
     rolling_avg_rewards = []
     reward_queue = deque(maxlen=10)  # Rolling window for the last 10 rewards
     highest_reward = float('-inf')  # Initialize highest reward as negative infinity
+    update_rewards = []  # List to store rewards per update
+    nb_reward = 0  # Initialize reward tracker for each model update
 
     # Establish socket connection to receive the game state
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -101,7 +159,13 @@ def main():
     env = SlayTheSpireEnv({})
 
     # Initialize PPO agent with MultiInputPolicy to handle dict observation spaces
-    model = PPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1)
+    device = th.device("cuda" if th.cuda.is_available() else "cpu")
+    if device == th.device("cpu"):
+        th.set_num_threads(4)
+    else:
+        th.cuda.set_per_process_memory_fraction(0.5, device=0)
+
+    model = PPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=device)
 
     # Load model weights if available
     if os.path.exists("ppo_slay_the_spire.zip"):
@@ -161,6 +225,7 @@ def main():
             # Step through the environment, passing only the action
             new_obs, reward, done, info = env.step(action)
             total_reward += reward
+            nb_reward += reward  # Increment the reward for this update cycle
             print("REWARD: ", total_reward)
             episode_length += 1
 
@@ -191,6 +256,11 @@ def main():
             if len(rollout_buffer) >= n_steps:
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
                 update_model(model, rollout_buffer, current_step, total_steps)
+
+                # Store and reset the nb_reward after each update
+                update_rewards.append(nb_reward)
+                nb_reward = 0  # Reset the reward counter after model update
+
                 rollout_buffer.reset()
 
         # Episode ended: update performance metrics
@@ -208,10 +278,11 @@ def main():
 
         # Periodically plot the metrics every 10 episodes
         if episode % 10 == 0:
-            plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward)
+            plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward, update_rewards)
 
         # Increment episode count
         episode += 1
+        handle_end_of_episode(client_socket)
 
         # Save model after each episode
         model.save("ppo_slay_the_spire")
@@ -221,10 +292,9 @@ def main():
 def update_model(model, rollout_buffer, current_step, total_steps):
     n_epochs = 10
     batch_size = 64
-    
-    # Calculate progress_remaining (from 1.0 to 0.0)
+
     progress_remaining = 1 - (current_step / total_steps)
-    
+
     for epoch in range(n_epochs):
         for rollout_data in rollout_buffer.get(batch_size):
             # Access the actions using the dictionary key
@@ -240,19 +310,22 @@ def update_model(model, rollout_buffer, current_step, total_steps):
             values, log_prob, entropy = model.policy.evaluate_actions(observations_tensor, actions)
 
             # Compute the loss
-            advantages = th.tensor(rollout_data["advantages"]).to(model.device)
-            log_probs_old = th.tensor(rollout_data["log_probs"]).to(model.device)
+            advantages = rollout_data["advantages"].to(model.device)
+            log_probs_old = rollout_data["log_probs"].to(model.device)
+            returns = rollout_data["returns"].to(model.device)
 
             ratio = th.exp(log_prob - log_probs_old)
 
-            # Pass progress_remaining to the clip_range function
             clip_range = model.clip_range(progress_remaining)
             policy_loss_1 = advantages * ratio
             policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
             policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
 
-            returns = th.tensor(rollout_data["returns"]).to(model.device)
-            value_loss = th.nn.functional.mse_loss(returns, values.flatten())
+
+            # Calculate value loss
+            value_loss = th.nn.functional.mse_loss(returns, values)
+            print(value_loss)
+
             entropy_loss = -th.mean(entropy)
 
             # Combine losses
@@ -263,6 +336,7 @@ def update_model(model, rollout_buffer, current_step, total_steps):
             loss.backward()
             th.nn.utils.clip_grad_norm_(model.policy.parameters(), model.max_grad_norm)
             model.policy.optimizer.step()
+            print("Model Updated")
 
 if __name__ == "__main__":
     main()

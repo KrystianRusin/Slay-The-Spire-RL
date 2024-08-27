@@ -9,6 +9,7 @@ class CustomRolloutBuffer(RolloutBuffer):
         self.observations = {key: np.zeros((self.buffer_size, self.n_envs, *space.shape), dtype=space.dtype)
                              for key, space in observation_space.spaces.items()}
         self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
+        self.device = device
 
     def reset(self):
         """
@@ -51,23 +52,28 @@ class CustomRolloutBuffer(RolloutBuffer):
             self.full = True
 
     def get(self, batch_size=None):
-        # Return the data in batches, handling the dictionary observation space
+        # Ensure data is processed on the correct device (GPU)
+        device = self.device  # Assuming self.device holds the appropriate device (GPU or CPU)
+
+        # Prepare and flatten the data
         for start in range(0, self.pos, batch_size):
             end = start + batch_size
 
-            # Yield batch of observations as dictionaries
+            # Flatten observations and other data
             obs_batch = {key: self.observations[key][start:end] for key in self.observations}
 
+            # Convert to torch tensors and move to GPU
             yield {
-                "observations": obs_batch,
-                "actions": self.actions[start:end],
-                "rewards": self.rewards[start:end],
-                "dones": self.dones[start:end],
-                "values": self.values[start:end],
-                "log_probs": self.old_log_prob[start:end],
-                "advantages": self.advantages[start:end],
-                "returns": self.returns[start:end]
+                "observations": {key: self.to_torch(obs).view(batch_size, -1).to(device) for key, obs in obs_batch.items()},
+                "actions": self.to_torch(self.actions[start:end]).to(device),
+                "rewards": self.to_torch(self.rewards[start:end]).to(device),
+                "dones": self.to_torch(self.dones[start:end]).to(device),
+                "values": self.to_torch(self.values[start:end]).to(device),
+                "log_probs": self.to_torch(self.old_log_prob[start:end]).flatten().to(device),
+                "advantages": self.to_torch(self.advantages[start:end]).flatten().to(device),
+                "returns": self.to_torch(self.returns[start:end]).to(device)
             }
+
 
     # Method to compute advantages and returns
     def compute_returns_and_advantage(self, last_values, dones):
