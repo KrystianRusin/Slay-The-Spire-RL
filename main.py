@@ -86,62 +86,6 @@ def receive_full_json(client_socket):
             if not part:
                 raise
 
-import json
-import socket
-import time
-import os
-import numpy as np
-import torch as th
-from stable_baselines3.common.buffers import RolloutBuffer
-from stable_baselines3.ppo import PPO
-from custom_rollout_buffer import CustomRolloutBuffer
-import matplotlib.pyplot as plt
-from collections import deque
-from slay_the_spire_env import SlayTheSpireEnv
-
-# Function to plot performance metrics with separate subplots for rewards, rolling averages, and episode lengths
-def plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward, update_rewards, save_path="performance_metrics.png"):
-    fig, (ax1, ax2, ax3, ax4) = plt.subplots(4, 1, figsize=(10, 16))
-
-    # Plot total rewards on the first subplot
-    ax1.plot(range(len(episode_rewards)), episode_rewards, 'b-', label='Episode Reward')
-    ax1.axhline(y=highest_reward, color='r', linestyle='--', label=f'Highest Reward: {highest_reward}')
-    ax1.set_xlabel('Episode')
-    ax1.set_ylabel('Total Reward')
-    ax1.set_title('Episode Rewards')
-    ax1.legend()
-    ax1.grid(True)
-
-    # Plot rolling average rewards on the second subplot
-    ax2.plot(range(len(rolling_avg_rewards)), rolling_avg_rewards, 'g--', label='Rolling Avg Reward (Last 10)')
-    ax2.set_xlabel('Episode')
-    ax2.set_ylabel('Rolling Avg Reward')
-    ax2.set_title('Rolling Average of Rewards')
-    ax2.legend()
-    ax2.grid(True)
-
-    # Plot episode lengths on the third subplot
-    ax3.plot(range(len(episode_lengths)), episode_lengths, 'r-', label='Episode Length')
-    ax3.set_xlabel('Episode')
-    ax3.set_ylabel('Episode Length')
-    ax3.set_title('Episode Lengths')
-    ax3.grid(True)
-
-    # Plot rewards after model updates on the fourth subplot
-    ax4.plot(range(len(update_rewards)), update_rewards, 'm-', label='Update Reward')
-    ax4.set_xlabel('Update')
-    ax4.set_ylabel('Update Reward')
-    ax4.set_title('Rewards per Update')
-    ax4.legend()
-    ax4.grid(True)
-
-    # Adjust layout and save the figure
-    plt.tight_layout()
-    plt.savefig(save_path, format='png')
-    plt.close(fig)
-
-    print(f"Performance metrics saved to {save_path}")
-
 def main():
     episode_rewards = []
     episode_lengths = []
