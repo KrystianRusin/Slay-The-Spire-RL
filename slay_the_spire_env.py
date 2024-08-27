@@ -204,15 +204,6 @@ class SlayTheSpireEnv(gym.Env):
         if self.previous_state is None or self.state is None or self.previous_action is None:
             return reward
 
-        if self.previous_action is not None and invalid_action_mask[self.previous_action]:
-            print("Invalid Action Taken Penalty ", self.actions[self.previous_action])
-            reward -= 10
-            return reward
-
-        if self.previous_action is not None and not invalid_action_mask[self.previous_action]:
-            print("Valid action taken")
-            reward += 10
-
         if self.previous_action is not None and self.actions[self.previous_action].startswith("CHOOSE"):
             print("Choose reward")
             reward += 5
@@ -321,8 +312,11 @@ class SlayTheSpireEnv(gym.Env):
         # Check if 'game_state' exists
         game_state = state.get('game_state', None)
         if not game_state:
-            # If game_state doesn't exist, all actions are invalid
-            return np.ones(len(self.actions), dtype=bool)
+            # If game_state doesn't exist, assume that only START commands are valid
+            for i, action in enumerate(self.actions):
+                if action not in ["START IRONCLAD 0", "START SILENT 0"]:
+                    invalid_action_mask[i] = True
+            return ~invalid_action_mask  # Invert mask before returning
 
         # Handle Potion actions
         potions = game_state.get('potions', [])
@@ -389,7 +383,7 @@ class SlayTheSpireEnv(gym.Env):
             for i, action in enumerate(self.actions):
                 if action.startswith('PLAY'):
                     invalid_action_mask[i] = True
-            return invalid_action_mask
+            return ~invalid_action_mask  # Invert mask and return
         
         hand = combat_state.get('hand', [])
         monsters = combat_state.get('monsters', [])
@@ -424,7 +418,8 @@ class SlayTheSpireEnv(gym.Env):
                     if target_index not in valid_monster_indices:
                         invalid_action_mask[i] = True
 
-        return invalid_action_mask
+        return ~invalid_action_mask
+
 
     def check_if_done(self):
         game_state = self.state.get("game_state", None)

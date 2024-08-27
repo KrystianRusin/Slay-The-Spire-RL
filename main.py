@@ -5,7 +5,7 @@ import os
 import numpy as np
 import torch as th
 from stable_baselines3.common.buffers import RolloutBuffer
-from stable_baselines3.ppo import PPO
+from sb3_contrib.ppo_mask import MaskablePPO, MultiInputPolicy  # Import the MaskableMultiInputPolicy
 from custom_rollout_buffer import CustomRolloutBuffer
 import matplotlib.pyplot as plt
 from collections import deque
@@ -92,8 +92,6 @@ def main():
     rolling_avg_rewards = []
     reward_queue = deque(maxlen=10)  # Rolling window for the last 10 rewards
     highest_reward = float('-inf')  # Initialize highest reward as negative infinity
-    update_rewards = []  # List to store rewards per update
-    nb_reward = 0  # Initialize reward tracker for each model update
 
     # Establish socket connection to receive the game state
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -102,19 +100,19 @@ def main():
     # Initialize the environment
     env = SlayTheSpireEnv({})
 
-    # Initialize PPO agent with MultiInputPolicy to handle dict observation spaces
+    # Initialize MaskablePPO agent with MaskableMultiInputPolicy to handle dict observation spaces
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     if device == th.device("cpu"):
         th.set_num_threads(4)
     else:
         th.cuda.set_per_process_memory_fraction(0.5, device=0)
 
-    model = PPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=device)
+    model = MaskablePPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=device)
 
     # Load model weights if available
-    if os.path.exists("ppo_slay_the_spire.zip"):
+    if os.path.exists("maskable_ppo_slay_the_spire.zip"):
         print("Loading existing model weights...")
-        model = PPO.load("ppo_slay_the_spire", env=env)
+        model = MaskablePPO.load("maskable_ppo_slay_the_spire", env=env, policy_kwargs={'net_arch': [dict(pi=[64, 64], vf=[64, 64])]})
 
     # Initialize the rollout buffer
     n_steps = 2048  # Number of steps to collect before updating the model
@@ -157,19 +155,35 @@ def main():
 
             obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(model.device) for key, value in obs.items()}
 
-            # Predict the action using the PPO model
-            action, _states = model.predict(obs)
+            # Get valid action mask
+            action_mask = env.get_invalid_action_mask(game_state)
+            print(f"Action Mask: {action_mask}")  # Debugging: Print the action mask
+            valid_actions = np.where(action_mask)[0]
+            print(f"Valid Actions (indices): {valid_actions}")  # Debugging: Print valid action indices
+            action_mask_tensor = th.tensor(action_mask, dtype=th.bool).unsqueeze(0).to(model.device)
+
+            # Convert observations and action masks to numpy arrays
+            obs_numpy = {key: value.cpu().numpy() for key, value in obs_tensor.items()}
+            action_mask_numpy = action_mask_tensor.cpu().numpy()
+
+            action, _states = model.predict(obs_numpy, action_masks=action_mask_numpy)
+
+            # Ensure action is an integer scalar
+            action = int(action)  # Convert to an integer if it's a NumPy array or similar
+            print(f"Chosen Action: {action}")  # Debugging: Print the chosen action
+
+            if action not in valid_actions:
+                print(f"Warning: Chosen action {action} is not in the list of valid actions!")
 
             chosen_command = env.actions[action]
             print(f"Chosen Action: {action}, Command: {chosen_command}")
 
             # Send the chosen command to the game
             client_socket.sendall(chosen_command.encode('utf-8'))
-
+        
             # Step through the environment, passing only the action
             new_obs, reward, done, info = env.step(action)
             total_reward += reward
-            nb_reward += reward  # Increment the reward for this update cycle
             print("REWARD: ", total_reward)
             episode_length += 1
 
@@ -201,10 +215,6 @@ def main():
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
                 update_model(model, rollout_buffer, current_step, total_steps)
 
-                # Store and reset the nb_reward after each update
-                update_rewards.append(nb_reward)
-                nb_reward = 0  # Reset the reward counter after model update
-
                 rollout_buffer.reset()
 
         # Episode ended: update performance metrics
@@ -222,7 +232,7 @@ def main():
 
         # Periodically plot the metrics every 10 episodes
         if episode % 10 == 0:
-            plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward, update_rewards)
+            plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewards, highest_reward)
 
         # Increment episode count
         episode += 1
@@ -264,7 +274,6 @@ def update_model(model, rollout_buffer, current_step, total_steps):
             policy_loss_1 = advantages * ratio
             policy_loss_2 = advantages * th.clamp(ratio, 1 - clip_range, 1 + clip_range)
             policy_loss = -th.min(policy_loss_1, policy_loss_2).mean()
-
 
             # Calculate value loss
             value_loss = th.nn.functional.mse_loss(returns, values)
