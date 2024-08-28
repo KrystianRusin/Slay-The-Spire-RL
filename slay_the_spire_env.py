@@ -204,10 +204,6 @@ class SlayTheSpireEnv(gym.Env):
         if self.previous_state is None or self.state is None or self.previous_action is None:
             return reward
 
-        if self.previous_action is not None and self.actions[self.previous_action].startswith("CHOOSE"):
-            print("Choose reward")
-            reward += 5
-
         previous_game_state = self.previous_state.get('game_state', None)
         current_game_state = self.state.get('game_state', None)
 
@@ -367,13 +363,13 @@ class SlayTheSpireEnv(gym.Env):
         # Prevent "RETURN" action immediately after "PROCEED"
         if self.previous_action is not None:
             previous_command = self.actions[self.previous_action].split()[0].lower()
-            if previous_command == 'proceed' or previous_command == "choose" or previous_command == "return":
+            if previous_command == 'PROCEED' or previous_command == "CHOOSE" or previous_command == "RETURN":
                 for i, action in enumerate(self.actions):
-                    if action.split()[0].lower() == 'return':
+                    if action.split()[0].lower() == 'RETURN':
                         invalid_action_mask[i] = True
             if previous_command == 'leave':
                 for i, action in enumerate(self.actions):
-                    if action.lower() == 'choose 0':
+                    if action.startswith('CHOOSE'):
                         invalid_action_mask[i] = True
                         
         # Handle combat-related actions
