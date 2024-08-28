@@ -112,7 +112,7 @@ def main():
     # Load model weights if available
     if os.path.exists("maskable_ppo_slay_the_spire.zip"):
         print("Loading existing model weights...")
-        model = MaskablePPO.load("maskable_ppo_slay_the_spire", env=env, policy_kwargs={'net_arch': [dict(pi=[64, 64], vf=[64, 64])]})
+        model = MaskablePPO.load("maskable_ppo_slay_the_spire", env=env)
 
     # Initialize the rollout buffer
     n_steps = 2048  # Number of steps to collect before updating the model
@@ -239,7 +239,7 @@ def main():
         handle_end_of_episode(client_socket)
 
         # Save model after each episode
-        model.save("ppo_slay_the_spire")
+        model.save("maskable_ppo_slay_the_spire")
 
     client_socket.close()
 
