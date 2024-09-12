@@ -16,6 +16,7 @@ def save_game_state(game_state_json):
         f.write(game_state_json)
 
 def handle_gym_client(gym_client_socket):
+    """Handle communication with the gym client."""
     last_game_state = None  # Store the last game state sent to the gym client
     
     while True:
@@ -60,7 +61,6 @@ def handle_gym_client(gym_client_socket):
 
             # Save the valid game state to a file before forwarding it
             # save_game_state(game_state_json)
-            # log_message(f"Saved and forwarding valid game state: {game_state_json}")
 
             # Forward the valid game state to the gym client
             gym_client_socket.sendall(game_state_json.encode('utf-8'))
@@ -76,7 +76,6 @@ def handle_gym_client(gym_client_socket):
                 sys.stdout.write(command + "\n")
                 sys.stdout.flush()
                 log_message(f"Sent command to game: {command}")
-           
 
         except Exception as e:
             log_message(f"Exception: {e}")
@@ -84,22 +83,43 @@ def handle_gym_client(gym_client_socket):
 
     gym_client_socket.close()
 
+def find_free_port(start_port=9999):
+    """Finds a free port starting from `start_port` and increments by 1 until a free port is found."""
+    port = start_port
+    while True:
+        try:
+            # Try to bind to the given port
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.bind(("0.0.0.0", port))
+                return port  # If successful, return the free port
+        except OSError:
+            log_message(f"Port {port} is in use, trying next port...")
+            port += 1  # Increment the port number and try again
+
 def main():
+    # Find a free port starting from 9999
+    port = find_free_port()
+    
+    # Create a TCP socket
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(("0.0.0.0", 9999))
+    server.bind(("0.0.0.0", port))
     server.listen(5)
-    # Send ready signal to the communication mod (game)
     sys.stdout.write("ready\n")
     sys.stdout.flush()
-    log_message("Middleman process started and ready.")
+    log_message(f"Middleman process started and listening on port {port}.")
 
     while True:
-        # Accept a connection from the environment process
-        client_socket, addr = server.accept()
-        log_message(f"Accepted connection from {addr}")
+        try:
+            # Accept a connection from the environment process
+            client_socket, addr = server.accept()
+            log_message(f"Accepted connection from {addr}")
 
-        # Handle the gym client in the current thread to maintain continuous communication
-        handle_gym_client(client_socket)
+            # Handle the gym client in the current thread to maintain continuous communication
+            handle_gym_client(client_socket)
+
+        except Exception as e:
+            log_message(f"Exception in main loop: {e}")
+            break
 
 if __name__ == "__main__":
     main()

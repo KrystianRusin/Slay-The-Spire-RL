@@ -156,7 +156,7 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.curr_action = None
         self.action_taken = False
-        
+
         # Expect that the initial state is passed in via an external process
         if self.state is None:
             raise ValueError("Initial state must be provided by the external process.")
@@ -320,7 +320,6 @@ class SlayTheSpireEnv(gym.Env):
         # Check if all potion slots are filled
         potions = game_state.get('potions', [])
         all_slots_filled = all(potion['id'] != "Potion Slot" for potion in potions)
-        print("ALL SLOTS FILLED:" , all_slots_filled)
         
         # Handle Potion actions
         for i, action in enumerate(self.actions):
