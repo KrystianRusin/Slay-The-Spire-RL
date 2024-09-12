@@ -3,6 +3,7 @@ import copy
 import numpy as np
 from gymnasium import spaces
 from tokenizers import screen_type_tokenizer
+import random
 
 from observations.player_observations import get_player_observation
 from observations.hand_observations import get_hand_observation
@@ -155,14 +156,16 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.curr_action = None
         self.action_taken = False
-
+        
         # Expect that the initial state is passed in via an external process
         if self.state is None:
             raise ValueError("Initial state must be provided by the external process.")
 
+        # Flatten the initial observation from the state
         observation = self.flatten_observation(self.state)
 
-        return observation
+        # Return the observation and an empty dictionary (or any relevant reset info)
+        return observation, {}
 
     def step(self, action):
         self.previous_action = self.curr_action
@@ -314,8 +317,12 @@ class SlayTheSpireEnv(gym.Env):
                     invalid_action_mask[i] = True
             return ~invalid_action_mask  # Invert mask before returning
 
-        # Handle Potion actions
+        # Check if all potion slots are filled
         potions = game_state.get('potions', [])
+        all_slots_filled = all(potion['id'] != "Potion Slot" for potion in potions)
+        print("ALL SLOTS FILLED:" , all_slots_filled)
+        
+        # Handle Potion actions
         for i, action in enumerate(self.actions):
             parts = action.split()
             if parts[0].lower() == 'potion':
@@ -352,6 +359,7 @@ class SlayTheSpireEnv(gym.Env):
 
         # Handle choice-related actions
         choice_list = game_state.get('choice_list', [])
+        screen_type = game_state.get('screen_type', '')
         if len(choice_list) != 0:
             for i, action in enumerate(self.actions):
                 parts = action.split()
@@ -359,19 +367,25 @@ class SlayTheSpireEnv(gym.Env):
                     choice_index = int(parts[1])
                     if choice_index >= len(choice_list):
                         invalid_action_mask[i] = True
-        
+                        continue
+                    
+                    # Invalidate choosing a potion if all slots are filled
+                    if screen_type == "COMBAT_REWARD" and all_slots_filled:
+                        if "potion" in choice_list[choice_index].lower():
+                            invalid_action_mask[i] = True
+
         # Prevent "RETURN" action immediately after "PROCEED"
         if self.previous_action is not None:
             previous_command = self.actions[self.previous_action].split()[0].lower()
-            if previous_command == 'PROCEED' or previous_command == "CHOOSE" or previous_command == "RETURN":
+            if previous_command == 'proceed' or previous_command == "choose" or previous_command == "return":
                 for i, action in enumerate(self.actions):
-                    if action.split()[0].lower() == 'RETURN':
+                    if action.split()[0].lower() == 'return':
                         invalid_action_mask[i] = True
             if previous_command == 'leave':
                 for i, action in enumerate(self.actions):
-                    if action.startswith('CHOOSE'):
+                    if action.lower() == 'choose 0':
                         invalid_action_mask[i] = True
-                        
+
         # Handle combat-related actions
         combat_state = game_state.get('combat_state', None)
         if not combat_state:
@@ -379,8 +393,8 @@ class SlayTheSpireEnv(gym.Env):
             for i, action in enumerate(self.actions):
                 if action.startswith('PLAY'):
                     invalid_action_mask[i] = True
-            return ~invalid_action_mask  # Invert mask and return
-        
+            return ~invalid_action_mask  # Invert mask before returning
+
         hand = combat_state.get('hand', [])
         monsters = combat_state.get('monsters', [])
         has_playable_cards = any(card.get('is_playable') for card in hand)
@@ -414,8 +428,7 @@ class SlayTheSpireEnv(gym.Env):
                     if target_index not in valid_monster_indices:
                         invalid_action_mask[i] = True
 
-        return ~invalid_action_mask
-
+        return ~invalid_action_mask  # Invert mask before returning
 
     def check_if_done(self):
         game_state = self.state.get("game_state", None)
