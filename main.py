@@ -14,10 +14,6 @@ from multiprocessing import Process, Queue
 def make_env(env_id, rank, seed=0):
     """
     Utility function for multiprocessed env.
-    
-    :param env_id: The ID of the environment
-    :param rank: Rank of the environment
-    :param seed: Random seed
     """
     def _init():
         env = SlayTheSpireEnv({})
@@ -65,51 +61,55 @@ def plot_performance_metrics(episode_rewards, episode_lengths, rolling_avg_rewar
 
 def handle_end_of_episode(client_socket):
     """
-    Handles the end-of-episode scenario by sending the "PROCEED" command twice,
-    waiting for the game state to update between the two sends.
+    Handles the end-of-episode scenario by sending the necessary commands
+    to navigate through the game over screen and start a new game.
     """
-    # First "PROCEED" command
-    proceed_command = "PROCEED"
-    client_socket.sendall(proceed_command.encode('utf-8'))
-    print("Sent 'PROCEED' command")
+    # Sequence of commands to navigate back to the main menu and start a new game
+    commands = [
+        "PROCEED",     # To proceed from the game over screen
+        "PROCEED",     # To confirm and return to main menu
+        "START_GAME",  # Command to start a new game
+        # Add any additional commands required to start a new run
+    ]
 
-    # Wait for the game state update
-    try:
-        game_state = receive_full_json(client_socket)
-        print("Game state received after first 'PROCEED'")
-    except json.JSONDecodeError as e:
-        print(f"Failed to decode JSON after first 'PROCEED': {e}")
-        return  # Exit if there's an error
+    for command in commands:
+        client_socket.sendall(command.encode('utf-8'))
+        print(f"Sent '{command}' command")
 
-    # Second "PROCEED" command
-    client_socket.sendall(proceed_command.encode('utf-8'))
-    print("Sent 'PROCEED' command again")
-
-    # Optionally, wait for another game state update if needed
-    try:
-        game_state = receive_full_json(client_socket)
-        print("Game state received after second 'PROCEED'")
-    except json.JSONDecodeError as e:
-        print(f"Failed to decode JSON after second 'PROCEED': {e}")
+        # Wait for the game state update
+        try:
+            game_state = receive_full_json(client_socket)
+            print(f"Game state received after '{command}'")
+        except json.JSONDecodeError as e:
+            print(f"Failed to decode JSON after '{command}': {e}")
+            return  # Exit if there's an error
+        except ConnectionError as e:
+            print(f"Connection error after '{command}': {e}")
+            return  # Handle connection errors
 
 def receive_full_json(client_socket):
     data = b''
     while True:
-        part = client_socket.recv(4096)
-        data += part
         try:
-            return json.loads(data.decode('utf-8'))
-        except json.JSONDecodeError:
+            part = client_socket.recv(4096)
             if not part:
-                raise
+                # No data received, connection might be closed
+                raise ConnectionError("Socket connection closed")
+            data += part
+            try:
+                return json.loads(data.decode('utf-8'))
+            except json.JSONDecodeError:
+                # Incomplete data, continue receiving
+                continue
+        except socket.timeout:
+            # Timeout occurred, handle accordingly
+            print("Timeout occurred while receiving game state. Requesting resend...")
+            # Optionally, send a message back to middleman to resend the game state
+            continue  # Continue trying to receive data
 
 def run_environment(env_id, port, experience_queue):
     """
     Function to run a single agent in a separate environment.
-    Args:
-        env_id (int): The ID of the environment.
-        port (int): The port number to connect to.
-        experience_queue (Queue): Queue to send collected experiences back to the main process.
     """
     episode_rewards = []
     episode_lengths = []
@@ -117,6 +117,7 @@ def run_environment(env_id, port, experience_queue):
     highest_reward = float('-inf')
     
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client_socket.settimeout(10)  # Set a timeout
     client_socket.connect(("localhost", port))
 
     # Initialize the environment
@@ -148,22 +149,27 @@ def run_environment(env_id, port, experience_queue):
         obs = env.reset()
 
         while not done:
+            # Remove or reduce the delay
+            # time.sleep(1)
+
             # Receive the next game state via socket
-            time.sleep(1)
             try:
                 game_state = receive_full_json(client_socket)
             except json.JSONDecodeError as e:
                 print(f"Failed to decode JSON in environment {env_id}: {e}")
                 continue
+            except ConnectionError as e:
+                print(f"Connection error in environment {env_id}: {e}")
+                break  # Exit the loop if the connection is lost
             print(f"Environment {env_id}: Game State Received")
 
             # Update the environment's internal state with the new game state
             env.update_game_state(game_state)
             obs = env.flatten_observation(game_state)
-            obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(model.device) for key, value in obs.items()}
+            obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in obs.items()}
 
             action_mask = env.get_invalid_action_mask(game_state)
-            action_mask_tensor = th.tensor(action_mask, dtype=th.bool).unsqueeze(0).to(model.device)
+            action_mask_tensor = th.tensor(action_mask, dtype=th.bool).unsqueeze(0).to(device)
             obs_numpy = {key: value.cpu().numpy() for key, value in obs_tensor.items()}
             action_mask_numpy = action_mask_tensor.cpu().numpy()
 
@@ -176,8 +182,8 @@ def run_environment(env_id, port, experience_queue):
             total_reward += reward
             episode_length += 1
 
-            new_obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(model.device) for key, value in new_obs.items()}
-            action_tensor = th.tensor(action, dtype=th.long).to(model.device)
+            new_obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in new_obs.items()}
+            action_tensor = th.tensor(action, dtype=th.long).to(device)
             values, log_prob, entropy = model.policy.evaluate_actions(obs_tensor, action_tensor)
             values = model.policy.predict_values(obs_tensor)
 
@@ -210,12 +216,12 @@ def run_environment(env_id, port, experience_queue):
 
         episode += 1
         handle_end_of_episode(client_socket)
-        model.save(f"maskable_ppo_slay_the_spire_{env_id}")
+        model.save(f"maskable_ppo_slay_the_spire")
 
     client_socket.close()
 
 def main():
-    num_envs = 2  # Start with 2 environments
+    num_envs = 4  # Adjust as needed
     base_port = 9999
     experience_queue = Queue()
     processes = []
@@ -274,7 +280,11 @@ def update_model(model, rollout_buffer, current_step, total_steps):
             loss.backward()
             th.nn.utils.clip_grad_norm_(model.policy.parameters(), model.max_grad_norm)
             model.policy.optimizer.step()
-            print("Model Updated")
+
+            # Logging the model update with timestamp
+            with open("model_update_log.txt", "a") as log_file:
+                log_file.write(f"Model was updated at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+            print("Model Updated and logged.")
 
 if __name__ == "__main__":
     main()
