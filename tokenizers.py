@@ -100,7 +100,8 @@ monster_ids = [
     "Chosen", "GremlinLeader", "Healer", "Mugger", "ShelledParasite", "SnakePlant", "Snecko", 
     "SphericGuardian", "TaskMaster", "TheCommector", "TorchHead", "AwakenedOne", "Darkling", "Deca", 
     "Donu", "Exploder", "GiantHead", "Maw", "Nemesis", "OrbWalker", "Reptomancer", "Repulsor", 
-    "SnakeDagger", "Spiker", "SpireGrowth", "TimeEater", "Transient", "WritingMass, FuzzyLouseDefensive, FuzzyLouseNormal"
+    "SnakeDagger", "Spiker", "SpireGrowth", "TimeEater", "Transient", "WritingMass, FuzzyLouseDefensive, FuzzyLouseNormal",
+    "Shelled Parasite"
 ]
 
 # Initialize the monster ID tokenizer
@@ -123,7 +124,7 @@ powers = [
     "BackAttack", "BeatOfDeath", "Bias", "Berserk", "Blur", "Brutality", "Buffer", "Burst", 
     "Choked", "Collect", "Combust", "Confusion", "Converse", "Constricted", "CorpseExplosionPower", 
     "Corruption", "Creative AI", "Curiosity", "Curl Up", "Dark Embrace", "Demon Form", "Dexterity", 
-    "Double Damage", "Double Tap", "Draw Card", "Draw", "Draw Reduction", "DuplicationPower", 
+    "Double Damage", "Double Tap", "Draw Card", "Draw", "Draw Reduction", "DuplicationPower", "Duplication Power"
     "Echo Form", "Electro", "EnergizedBlue", "Enrage", "Energized", "Entangled", "Envenom", "Equilibrium", 
     "Evolve", "Explosive", "Fading", "Feel No Pain", "Fire Breathing", "Flame Barrier", "Flight", 
     "Focus", "Nullify Attack", "Frail", "Shackled", "Generic Strength Up Power", "GrowthPower", 
@@ -135,7 +136,8 @@ powers = [
     "Life Link", "Retain Cards", "Ritual", "Rupture", "Sadistic", "Sharp Hide", "Shifting", 
     "Skill Burn", "Slow", "Split", "Spore Cloud", "Stasis", "StaticDischarge", "Storm", 
     "Strength", "StrikeUp", "Surrounded", "Thievery", "Thorns", "Thousand Cuts", "Time Warp", 
-    "Tools Of The Trade", "TheBomb", "Unawakened", "Vulnerable", "Weakened", "Winter", "Wraith Form v2"
+    "Tools Of The Trade", "TheBomb", "Unawakened", "Vulnerable", "Weakened", "Winter", "Wraith Form v2",
+    "Regeneration", "Regen", "Noxious Fumes"
 ]
 
 
@@ -199,7 +201,7 @@ potion_types = [
     "Explosive Potion", "FairyPotion", "FearPotion", "Fire Potion", "FocusPotion", "Fruit Juice", "GamblersBrew",
     "GhostInAJar", "HeartOfIron", "LiquidBronze", "LiquidMemories", "Poison Potion", "PotionOfCapacity", "PotionSlot",
     "PowerPotion", "Regen Potion", "SkillPotion", "SmokeBomb", "SneckoOil", "SpeedPotion", "StancePotion",
-    "SteroidPotion", "Strength Potion", "Swift Potion", "Weak Potion"
+    "SteroidPotion", "Strength Potion", "Swift Potion", "Weak Potion", "EntropicBrew", "Entropic Brew"
 ]
 
 # Initialize the potion type tokenizer
