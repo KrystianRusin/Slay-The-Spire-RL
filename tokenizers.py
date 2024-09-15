@@ -137,7 +137,7 @@ powers = [
     "Skill Burn", "Slow", "Split", "Spore Cloud", "Stasis", "StaticDischarge", "Storm", 
     "Strength", "StrikeUp", "Surrounded", "Thievery", "Thorns", "Thousand Cuts", "Time Warp", 
     "Tools Of The Trade", "TheBomb", "Unawakened", "Vulnerable", "Weakened", "Winter", "Wraith Form v2",
-    "Regeneration", "Regen", "Noxious Fumes"
+    "Regeneration", "Regen", "Noxious Fumes", "CorpseExplosionPower", "Corpse Explosion"
 ]
 
 
