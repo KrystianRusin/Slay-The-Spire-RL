@@ -85,7 +85,7 @@ You can adjust PPO training hyperparameters such as `learning_rate`, `gamma`, an
 
 ### Model Checkpoints
 
-The model will automatically save after a defined number of episodes. You can adjust the frequency of checkpoints in the training loop.
+The model will automatically save after a defined number of steps `n_steps`, increasing `n_steps` increases data available per update leading to more stability during training, but also will require more memory.
 
 ## Training the Agent
 
