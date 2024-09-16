@@ -156,7 +156,7 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.curr_action = None
         self.action_taken = False
-        
+
         # Expect that the initial state is passed in via an external process
         if self.state is None:
             raise ValueError("Initial state must be provided by the external process.")
@@ -222,11 +222,13 @@ class SlayTheSpireEnv(gym.Env):
         if len(previous_combat_state) > 0:
             for prev_monster, curr_monster in zip(previous_monsters, current_monsters):
                 if curr_monster.get('current_hp', 0) < prev_monster.get('current_hp', 0):
-                    print("Monster Damaged Reward ", self.actions[self.previous_action])
+                    print("Monster Damage Reward ", self.actions[self.previous_action])
+                    max_hp = curr_monster.get('max_hp', 1)
                     health_diff = prev_monster.get('current_hp', 0) - curr_monster.get('current_hp', 0)
-                    reward += health_diff
-                    if prev_monster.get('current_hp', 0) == 0:
-                        print("Monster Defeated Reward", self.actions[self.previous_action])
+                    percentage_damage = health_diff / max_hp
+                    reward += percentage_damage * 10
+                    if curr_monster.get('current_hp', 0) == 0 and prev_monster.get('current_hp', 0) > 0:
+                        print("Monster Kill Reward ", self.actions[self.previous_action])
                         reward += 20
 
         if self.previous_state.get("screen_type", None) == "NONE" and self.state.get("screen_type", None) == "COMBAT_REWARD":
@@ -252,7 +254,7 @@ class SlayTheSpireEnv(gym.Env):
 
         if self.actions[self.previous_action].startswith('POTION Discard'):
             print("Potion Discard Penalty ", self.actions[self.previous_action])
-            reward -= 20
+            reward -= 10
 
         # Reward for acquiring a relic
         previous_relics = previous_game_state.get('relics', [])
@@ -294,6 +296,9 @@ class SlayTheSpireEnv(gym.Env):
         if current_curse_count < previous_curse_count:
             print("Curse Removal Reward ", self.actions[self.previous_action])
             reward += 15
+        
+        # Small penalty per action to encourage efficiency
+        reward -= 0.1
 
         # Return the calculated reward
         return reward
@@ -320,7 +325,6 @@ class SlayTheSpireEnv(gym.Env):
         # Check if all potion slots are filled
         potions = game_state.get('potions', [])
         all_slots_filled = all(potion['id'] != "Potion Slot" for potion in potions)
-        print("ALL SLOTS FILLED:" , all_slots_filled)
         
         # Handle Potion actions
         for i, action in enumerate(self.actions):
