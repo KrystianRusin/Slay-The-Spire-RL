@@ -12,7 +12,7 @@ This project implements a reinforcement learning agent using Maskable Proximal P
 - [Reward Function](#reward-function)
 - [Model Checkpointing](#model-checkpointing)
 - [Performance Metrics](#performance-metrics)
-- [Next Step](#next-steps)
+- [Next Steps](#next-steps)
 - [Acknowledgements](#acknowledgements)
 
 ## Project Overview
