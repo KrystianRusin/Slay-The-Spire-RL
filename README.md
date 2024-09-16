@@ -138,8 +138,8 @@ The agent's performance is tracked by logging the total rewards and episode leng
 
 ## Next Steps
 
-Setting up Docker containers or VMs through AWS EC2 to handle each game instance and the main process in order to distribute computational load and speed up training.
-Implementing more detailed data analysis in order to visualize things like what specific cards the agent tends to prefer, how many elites does it defeat per run, enemies it loses to the most etc.
+- Setting up Docker containers or VMs through AWS EC2 to handle each game instance and the main process in order to distribute computational load and speed up training.
+- Implementing more detailed data analysis in order to visualize things like what specific cards the agent tends to prefer, how many elites does it defeat per run, enemies it loses to the most etc.
 
 ## Acknowledgements
 
