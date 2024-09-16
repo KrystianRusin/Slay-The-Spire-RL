@@ -1,6 +1,6 @@
 # Slay the Spire PPO Agent
 
-This project implements a reinforcement learning agent using Proximal Policy Optimization (PPO) to play the game *Slay the Spire*. The agent interacts with the game via a socket connection through a middleman process, processes the game state, and learns to improve its actions through training. Still undergoing development.
+This project implements a reinforcement learning agent using Maskable Proximal Policy Optimization (PPO) to play the game *Slay the Spire*. The agent interacts with the game via a socket connection through a middleman process, processes the game state, and learns to improve its actions through training.
 
 ## Table of Contents
 
@@ -12,6 +12,7 @@ This project implements a reinforcement learning agent using Proximal Policy Opt
 - [Reward Function](#reward-function)
 - [Model Checkpointing](#model-checkpointing)
 - [Performance Metrics](#performance-metrics)
+- [Next Steps](#next-steps)
 - [Acknowledgements](#acknowledgements)
 
 ## Project Overview
@@ -70,7 +71,11 @@ Run the main script to start training the PPO agent:
 
 This will start the training loop, during which the agent will interact with the game, receive game states, make decisions, and learn over time.
 
-The model will periodically save its progress to a file named ppo_slay_the_spire.zip.
+The model will periodically save its progress to a file named maskable_ppo_slay_the_spire.zip.
+
+In order to use multiple Slay The Spire Environments, first ensure that all games are running `middleman_process.py` through the communication mod
+
+Then edit `num_envs` in the main process and set it equal to the number of game instances you have open, then just run `main.py`
 
 ## Customization
 
@@ -130,6 +135,11 @@ The model is saved after a specified number of episodes during training. By defa
 ## Performance Metrics
 
 The agent's performance is tracked by logging the total rewards and episode lengths. These metrics are plotted periodically during training and saved as `performance_metrics.png`.
+
+## Next Steps
+
+- Setting up Docker containers or VMs through AWS EC2 to handle each game instance and the main process in order to distribute computational load and speed up training.
+- Implementing more detailed data analysis in order to visualize things like what specific cards the agent tends to prefer, how many elites does it defeat per run, enemies it loses to the most etc.
 
 ## Acknowledgements
 
