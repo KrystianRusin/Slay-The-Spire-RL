@@ -11,6 +11,8 @@ from collections import deque
 from slay_the_spire_env import SlayTheSpireEnv
 from multiprocessing import Process, Queue
 
+n_steps = 2048  # Number of steps to run in each environment
+
 def make_env(env_id, rank, seed=0):
     """
     Utility function for multiprocessed env.
@@ -127,7 +129,7 @@ def run_environment(env_id, port, experience_queue):
     # Initialize model, but don't load weights independently
     model = MaskablePPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=device)
     
-    n_steps = 2048
+    
     reload_interval = 100  # Define how often to reload the model weights
     reload_counter = 0  # Counter for tracking when to reload the model weights
 
@@ -242,7 +244,6 @@ def main():
 
     model = MaskablePPO("MultiInputPolicy", SlayTheSpireEnv({}), ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=th.device("cuda" if th.cuda.is_available() else "cpu"))
     
-    n_steps = 128
     total_steps = 100000
     current_step = 0
     
@@ -284,11 +285,6 @@ def update_model(model, rollout_buffer, current_step, total_steps):
                 log_probs_old = rollout_data["log_probs"].to(model.device)
                 returns = rollout_data["returns"].to(model.device)
 
-                # Ensure shapes are compatible
-                if advantages.shape[0] != returns.shape[0] or log_probs_old.shape[0] != actions.shape[0]:
-                    print("Shape mismatch detected, adjusting batch size or data alignment.")
-                    continue  # Skip batch if shapes don't match
-
                 ratio = th.exp(log_prob - log_probs_old)
                 clip_range = model.clip_range(progress_remaining)
                 policy_loss_1 = advantages * ratio
@@ -303,16 +299,15 @@ def update_model(model, rollout_buffer, current_step, total_steps):
                 th.nn.utils.clip_grad_norm_(model.policy.parameters(), model.max_grad_norm)
                 model.policy.optimizer.step()
 
-                # Logging the model update with timestamp
-                with open("model_update_log.txt", "a") as log_file:
-                    log_file.write(f"Model was updated at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                print("Model Updated and logged.")
-
             except Exception as e:
                 # Log the error with a timestamp
                 with open("model_update_log.txt", "a") as log_file:
                     log_file.write(f"Error during model update at {time.strftime('%Y-%m-%d %H:%M:%S')}: {str(e)}\n")
                 print(f"Error during model update: {e}")
+        # Logging the model update with timestamp
+        with open("model_update_log.txt", "a") as log_file:
+            log_file.write(f"Model was updated at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        print("Model Updated and logged.")
 
 
 if __name__ == "__main__":
