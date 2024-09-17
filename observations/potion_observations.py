@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import potion_tokenizer
+from util.tokenizers import potion_tokenizer
 from observation_processing import tokenize_potions
 
 def get_potion_observation(game_state):

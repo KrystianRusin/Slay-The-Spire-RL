@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import relic_tokenizer
+from util.tokenizers import relic_tokenizer
 
 def get_relic_observation(game_state):
     relics = game_state.get("relics", [])

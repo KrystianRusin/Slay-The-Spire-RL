@@ -2,7 +2,7 @@ import gymnasium as gym
 import copy
 import numpy as np
 from gymnasium import spaces
-from tokenizers import screen_type_tokenizer
+from util.tokenizers import screen_type_tokenizer
 import random
 
 from observations.player_observations import get_player_observation

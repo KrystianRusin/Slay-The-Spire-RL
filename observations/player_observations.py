@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import power_tokenizer
+from util.tokenizers import power_tokenizer
 import sys
 import os
 current_dir = os.path.dirname(os.path.abspath(__file__))

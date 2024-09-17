@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import monster_id_tokenizer, intent_tokenizer, power_tokenizer
+from util.tokenizers import monster_id_tokenizer, intent_tokenizer, power_tokenizer
 from observation_processing import tokenize_monsters
 
 def get_monster_observation(game_state):

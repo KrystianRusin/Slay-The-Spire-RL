@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
+from util.tokenizers import card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
 
 def get_deck_observation(game_state):
     deck = game_state.get("deck", [])

@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import card_tokenizer, card_rarity_tokenizer, card_type_tokenizer
+from util.tokenizers import card_tokenizer, card_rarity_tokenizer, card_type_tokenizer
 
 def tokenize_powers(powers, max_powers, tokenizer):
     powers_observation = []

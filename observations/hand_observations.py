@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
+from util.tokenizers import card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
 
 def get_hand_observation(combat_state):
     # Default to zeros if combat_state or hand is not available

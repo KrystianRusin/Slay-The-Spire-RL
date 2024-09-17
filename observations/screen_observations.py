@@ -1,5 +1,5 @@
 import numpy as np
-from tokenizers import screen_type_tokenizer, map_symbol_tokenizer, relic_tokenizer, potion_tokenizer, card_tokenizer, rest_tokenizer, reward_type_tokenizer, event_id_tokenizer
+from util.tokenizers import screen_type_tokenizer, map_symbol_tokenizer, relic_tokenizer, potion_tokenizer, card_tokenizer, rest_tokenizer, reward_type_tokenizer, event_id_tokenizer, card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
 from observation_processing import tokenize_card
 
 import numpy as np
@@ -241,10 +241,6 @@ def handle_chest_screen(screen_state, screen_type_token):
     
     # Return an array with the screen_type_token and the chest_open flag
     return np.array([screen_type_token, chest_open], dtype=np.float32)
-
-
-import numpy as np
-from tokenizers import card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
 
 def handle_card_reward_screen(screen_state, screen_type_token):
     max_cards = 3
