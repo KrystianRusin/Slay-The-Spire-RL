@@ -39,5 +39,3 @@ class CardPerformance(Base):
     average_floor_reached = Column(Float, default=0.0)
     win_rate = Column(Float, default=0.0)
     games_featured_in = Column(Integer, default=0)
-
-    game = relationship('Game') 

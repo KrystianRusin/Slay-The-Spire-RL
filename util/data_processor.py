@@ -1,5 +1,6 @@
 from util.card_tracking import track_card_pick
 from util.class_tracking import track_favorite_class
+from util.boss_tracking import update_boss_count
 from sqlalchemy.orm import Session
 from db.session import SessionLocal
 from db.models import Game
@@ -13,6 +14,9 @@ def process_game_state(game_state, action, game_id):
     # Check for card reward screen type
     if screen_type == "CARD_REWARD":
         track_card_pick(game_state, action, game_id)
+
+    if screen_type == "BOSS_REWRAD":
+        update_boss_count(game_state, game_id)
     
     # Check for game start action
     if action.startswith("START"):

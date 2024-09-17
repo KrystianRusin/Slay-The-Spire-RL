@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from db.models import CardPicked, CardPerformance
 from db.session import SessionLocal
 import json
+import math
 
 def track_card_pick(game_state, action, game_id):
     """
@@ -80,8 +81,10 @@ def track_card_performance(game_state, floor_reached, won):
 
                 # Update the win rate and average floor reached
                 total_games = card_performance.games_featured_in
-                card_performance.average_floor_reached = ((card_performance.average_floor_reached * (total_games - 1)) + floor_reached) / total_games
-                card_performance.win_rate = ((card_performance.win_rate * (total_games - 1)) + (1 if won else 0)) / total_games
+                card_performance.average_floor_reached = math.floor(
+                    ((card_performance.average_floor_reached * (total_games - 1)) + floor_reached) / total_games
+                )
+                card_performance.win_rate = (((card_performance.win_rate * (total_games - 1)) + (1 if won else 0)) / total_games) * 100
             else:
                 # Create a new entry
                 card_performance = CardPerformance(
