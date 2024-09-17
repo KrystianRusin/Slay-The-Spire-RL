@@ -52,6 +52,11 @@ The game is treated as an environment, where the agent observes the current game
     ```
 
 4. Install the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) for *Slay the Spire*
+   
+5. Create .env file in root directory and set database connection url to PostgreSQL database
+   ```
+    DATABASE_URL=postgresql://<username>:<password>@localhost:<port>/<db_name>
+   ```
 
 ## Usage
 
@@ -128,7 +133,10 @@ The model is saved after a specified number of episodes during training. By defa
 
 ## Performance Metrics
 
-The agent's performance is tracked by logging the total rewards and episode lengths. These metrics are plotted periodically during training and saved as `performance_metrics.png`.
+- The agent's performance is tracked by logging the total rewards and episode lengths. These metrics are plotted periodically during training and saved as `performance_metrics.png`.
+- Other data is stored in the database and stores each game instance with a start and end time, class chosen, floor reached and how many bosses the agent was able to defeat.
+- Cards that the agent chooses during card selection is also stored along with the other choices the agent had in order to develop a card ranking based on the agents preferences
+- Card performance statistics are also recorded which include how many times the card is picked, the average floor the agent reaches with that card in its deck, the cards winrate and how many games the card was featured in
 
 ## Next Steps
 
@@ -137,7 +145,7 @@ The agent's performance is tracked by logging the total rewards and episode leng
 
 ## Acknowledgements
 
-This project was built using the following libraries:
+This project was built with a large help from the following technologies:
 
 - **Stable Baselines3** - A set of improved reinforcement learning algorithms in Python.
 - **Slay the Spire** - The game used as the environment for this project.
