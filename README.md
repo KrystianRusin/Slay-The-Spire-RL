@@ -51,13 +51,7 @@ The game is treated as an environment, where the agent observes the current game
     pip install -r requirements.txt
     ```
 
-4. Install stable-baselines3:
-
-    ```bash
-    pip install stable-baselines3
-    ```
-
-5. Install the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) for *Slay the Spire*
+4. Install the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) for *Slay the Spire*
 
 ## Usage
 
