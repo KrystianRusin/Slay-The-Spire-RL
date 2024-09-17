@@ -5,9 +5,13 @@ from collections import deque
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
-from communication import receive_full_json, handle_end_of_episode
-from plotting import plot_performance_metrics
+from util.communication import receive_full_json, handle_end_of_episode
+from util.plotting import plot_performance_metrics
+from util.data_processor import process_game_state
 import json
+from util.data_processor import process_game_state, get_next_game_id
+from util.game_over_tracking import update_game_stats_on_game_over
+from util.card_tracking import track_card_performance
 
 def run_environment(env_id, port, experience_queue, n_steps=2048):
     """
@@ -42,11 +46,18 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
 
     current_step = 0
     episode = 0
+
     while True:
         done = False
         total_reward = 0
         episode_length = 0
         obs = env.reset()
+
+        # Fetch the next game ID from the database
+        game_id = get_next_game_id()
+        if game_id is None:
+            print(f"Error fetching the next game ID. Exiting.")
+            break
 
         while not done:
             try:
@@ -72,6 +83,9 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
             action = int(action)
             chosen_command = env.actions[action]
             client_socket.sendall(chosen_command.encode('utf-8'))
+
+            # Call the central processing function to handle game state checks and updates
+            process_game_state(game_state, chosen_command, game_id)
 
             new_obs, reward, done, info = env.step(action)
             total_reward += reward
@@ -104,6 +118,14 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
                     if os.path.exists("maskable_ppo_slay_the_spire.zip"):
                         model = MaskablePPO.load("maskable_ppo_slay_the_spire", env=env)
                         print(f"Environment {env_id}: Reloaded updated model weights.")
+            if done:
+                screen_state = game_state['game_state'].get('screen_state', {})
+                victory = screen_state.get('victory', False)
+                floor_reached = game_state['game_state'].get('floor', 0)
+
+                # Update the game stats and card performance before sending any commands
+                update_game_stats_on_game_over(game_state, game_id)
+                track_card_performance(game_state['game_state'], floor_reached, victory)
 
         episode_rewards.append(total_reward)
         episode_lengths.append(episode_length)
@@ -115,6 +137,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
             plot_performance_metrics(episode_rewards, episode_lengths, [rolling_avg], highest_reward)
 
         episode += 1
+  
         handle_end_of_episode(client_socket)
 
     client_socket.close()
