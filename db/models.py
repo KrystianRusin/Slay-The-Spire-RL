@@ -14,6 +14,7 @@ class Game(Base):
     floors_reached = Column(Integer, nullable=False)
     bosses_defeated = Column(Integer, nullable=False)
     win = Column(Boolean, nullable=False)
+    reward = Column(Float, nullable=False)
 
     # Ensure this matches the relationship
     card_picks = relationship('CardPicked', back_populates='game', cascade="all, delete-orphan")

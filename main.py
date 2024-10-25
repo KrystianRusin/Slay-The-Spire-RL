@@ -18,7 +18,20 @@ def main():
         p.start()
         processes.append(p)
 
-    model = MaskablePPO("MultiInputPolicy", SlayTheSpireEnv({}), ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=th.device("cuda" if th.cuda.is_available() else "cpu"))
+    def linear_clip_range(progress_remaining):
+       
+        return 0.3 * progress_remaining
+
+    model = MaskablePPO(
+        "MultiInputPolicy",
+        SlayTheSpireEnv({}),
+        ent_coef=0.03,
+        gamma=0.97,
+        learning_rate=0.0003,
+        clip_range=linear_clip_range,
+        verbose=1,
+        device=th.device("cuda" if th.cuda.is_available() else "cpu")
+    )
     
     total_steps = 100000
     current_step = 0

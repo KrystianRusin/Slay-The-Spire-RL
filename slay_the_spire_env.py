@@ -101,7 +101,7 @@ class SlayTheSpireEnv(gym.Env):
 
     def flatten_observation(self, state):
         if "game_state" not in state:
-            player_observation = np.zeros((24,), dtype=np.float32)  # Adjusted to (24,) for 4 stats + 20 powers
+            player_observation = np.zeros((24,), dtype=np.float32)
             hand_observation = np.zeros((10, 8), dtype=np.float32)
             monster_observation = np.zeros((5, 30), dtype=np.float32)
             map_observation = np.zeros((100, 4), dtype=np.float32)

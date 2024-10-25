@@ -124,7 +124,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
                 floor_reached = game_state['game_state'].get('floor', 0)
 
                 # Update the game stats and card performance before sending any commands
-                update_game_stats_on_game_over(game_state, game_id)
+                update_game_stats_on_game_over(game_state, game_id, total_reward)
                 track_card_performance(game_state['game_state'], floor_reached, victory)
 
         episode_rewards.append(total_reward)

@@ -3,7 +3,7 @@ from datetime import datetime
 from db.models import Game
 from db.session import SessionLocal
 
-def update_game_stats_on_game_over(game_state, game_id):
+def update_game_stats_on_game_over(game_state, game_id, total_reward):
     """
     Update the game stats in the database when the game is over.
     """
@@ -26,6 +26,7 @@ def update_game_stats_on_game_over(game_state, game_id):
             game.end_time = datetime.now()
             game.floors_reached = game_state_data.get("floor", 0)
             game.win = game_state_data.get("screen_state", {}).get("victory", False)
+            game.reward = total_reward
 
             db.commit()
             print(f"Game {game_id} stats updated in the database.")
