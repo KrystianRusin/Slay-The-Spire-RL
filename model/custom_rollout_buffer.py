@@ -6,6 +6,8 @@ import torch as th
 class CustomRolloutBuffer(RolloutBuffer):
     def __init__(self, buffer_size, observation_space, action_space, device, gamma=0.99, gae_lambda=0.95, n_envs=1):
         super().__init__(buffer_size, observation_space, action_space, device, gamma, gae_lambda, n_envs)
+
+        # Instead of single numpy array, we store observation component separately
         self.observations = {key: np.zeros((self.buffer_size, self.n_envs, *space.shape), dtype=space.dtype)
                              for key, space in observation_space.spaces.items()}
         self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
@@ -15,6 +17,7 @@ class CustomRolloutBuffer(RolloutBuffer):
         """
         Reset the buffer by filling it with zeros for each observation component.
         """
+        # Reset dictionary based observations since standard SB3 rollout buffer does not
         self.observations = {key: np.zeros((self.buffer_size, self.n_envs, *space.shape), dtype=space.dtype)
                              for key, space in self.observation_space.spaces.items()}
         self.actions = np.zeros((self.buffer_size, self.action_dim), dtype=np.float32)
@@ -24,7 +27,9 @@ class CustomRolloutBuffer(RolloutBuffer):
         self.advantages = np.zeros((self.buffer_size,), dtype=np.float32)
         self.old_log_prob = np.zeros((self.buffer_size,), dtype=np.float32)
         self.log_prob = np.zeros((self.buffer_size,), dtype=np.float32)
-        self.values = np.zeros((self.buffer_size,), dtype=np.float32)  # Initialize values here
+
+        # Ensure value predictions are reset
+        self.values = np.zeros((self.buffer_size,), dtype=np.float32) 
         self.pos = 0
         self.full = False
 
@@ -36,33 +41,36 @@ class CustomRolloutBuffer(RolloutBuffer):
 
         # Store dict observation components
         for key in obs:
+            # Convert tensors to numpy arrays and store them per observation key
             self.observations[key][idx] = obs[key].detach().cpu().numpy()
 
-        # Store other values
+        # Store other values as usual
         self.actions[idx] = action.cpu().numpy()
         self.rewards[idx] = reward
         self.dones[idx] = done
         self.returns[idx] = value.detach().cpu().numpy()
         self.old_log_prob[idx] = log_prob.detach().cpu().numpy()
-        self.values[idx] = value.detach().cpu().numpy()  # Store value predictions
 
-        # Update position
+        # Store value predictions
+        self.values[idx] = value.detach().cpu().numpy()  
+
+        # increment buffer size and flag when buffer is full
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
 
     def get(self, batch_size=None):
         # Ensure data is processed on the correct device (GPU)
-        device = self.device  # Assuming self.device holds the appropriate device (GPU or CPU)
+        device = self.device
 
-        # Prepare and flatten the data
+        # Loop over buffer in increments of the specified batch_size
         for start in range(0, self.pos, batch_size):
             end = start + batch_size
 
-            # Flatten observations and other data
+            # Process each observation component separately
             obs_batch = {key: self.observations[key][start:end] for key in self.observations}
 
-            # Convert to torch tensors and move to GPU
+            # Convert data to torch tensors, flattening observations for model consumption
             yield {
                 "observations": {key: self.to_torch(obs).view(batch_size, -1).to(device) for key, obs in obs_batch.items()},
                 "actions": self.to_torch(self.actions[start:end]).to(device),
@@ -77,9 +85,11 @@ class CustomRolloutBuffer(RolloutBuffer):
 
     # Method to compute advantages and returns
     def compute_returns_and_advantage(self, last_values, dones):
-        # GAE and discounted returns calculation
-        last_values = last_values.cpu().detach().numpy()  # Convert the last values to numpy array upfront
 
+        # Convert last_values to numpy array for consistency with other numpy arrays
+        last_values = last_values.cpu().detach().numpy() 
+
+        # Process buffer in reverse order to compute TD error and advantages
         for step in reversed(range(self.pos)):
             if step == self.pos - 1:
                 next_non_terminal = 1.0 - dones
@@ -96,7 +106,7 @@ class CustomRolloutBuffer(RolloutBuffer):
             delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
             self.advantages[step] = delta + self.gamma * self.gae_lambda * next_non_terminal * (self.advantages[step + 1] if step < self.pos - 1 else 0)
 
-        # Calculate the returns
+        # Calculate the returns as sum of advantages and predicted values
         self.returns = self.advantages + self.values
 
     def __len__(self):
