@@ -80,7 +80,7 @@ Then edit `num_envs` in the main process and set it equal to the number of game 
 
 ### Training Hyperparameters
 
-You can adjust PPO training hyperparameters such as `learning_rate`, `gamma`, and `ent_coef` inside the `main.py` and `run_env.py` files when initializing the PPO model. Note that there are two instances of the model, one is a central model defined in `main.py` which gets updated with expereinces that are collected from multiple environments. The model defined in `run_env.py` is a separate environments isolated instance of the model to interact with the game in order to avoid conflicts and interference from other environments.
+You can adjust PPO training hyperparameters such as `learning_rate`, `gamma`, and `ent_coef` inside the `main.py` and `run_env.py` files when initializing the PPO model. Note that there are two instances of the model, one is a central model defined in `main.py` which gets updated with experiences that are collected from multiple environments. The model defined in `run_env.py` is a separate environments isolated instance of the model to interact with the game in order to avoid conflicts and interference from other environments.
 
 ### Model Checkpoints
 
