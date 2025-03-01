@@ -140,7 +140,8 @@ The model is saved after a specified number of episodes during training. By defa
 
 ## Next Steps
 
-- Setting up Docker containers or VMs through AWS EC2 to handle each game instance and the main process in order to distribute computational load and speed up training.
+- Modifying the game to remove graphics rendering in order to reduce load on processor, which allows for an increased number of concurrent environments running on one machine
+- Introducing a imitation learning approach where the agent can learn off of gamplay from another source for pre-training 
 - Implementing more detailed data analysis in order to visualize things like what specific cards the agent tends to prefer, how many elites does it defeat per run, enemies it loses to the most etc.
 
 ## Acknowledgements
