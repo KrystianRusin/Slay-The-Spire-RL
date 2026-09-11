@@ -1,4 +1,8 @@
-from keras.preprocessing.text import Tokenizer
+# Keras 3 (bundled with TensorFlow 2.20+) dropped keras.preprocessing.text.
+# tf_keras is the Keras 2 compatibility package that still provides it.
+# Ticket 03 replaces this with a plain vocabulary map and drops the
+# TensorFlow dependency entirely.
+from tf_keras.preprocessing.text import Tokenizer
 
 # List of all card names
 card_names = [
@@ -150,9 +154,6 @@ map_symbols = ["?", "$", "T", "M", "E", "R"]
 # Initialize the tokenizer for map symbols
 map_symbol_tokenizer = Tokenizer()
 map_symbol_tokenizer.fit_on_texts(map_symbols)
-
-
-from keras.preprocessing.text import Tokenizer
 
 # Complete list of all possible relics
 relics_list = [

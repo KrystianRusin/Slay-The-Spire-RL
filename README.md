@@ -25,24 +25,25 @@ The game is treated as an environment, where the agent observes the current game
 
 ### Prerequisites
 
-- Python 3.7+
-- `virtualenv` (optional but recommended)
+- **Python 3.13** (the version this project is developed and tested against)
+- A running PostgreSQL instance
 - *Slay the Spire* (with the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) installed)
+- Optional: an NVIDIA GPU with a CUDA-capable driver, for GPU training
 
 ### Installation
 
 1. Clone the repository:
 
     ```bash
-    git clone https://github.com/KrystianRusin/Slay-The-Spire-RL.git
-    cd slay-the-spire-ppo
+    git clone https://github.com/KrystianRusin/slAI_the_spire.git
+    cd slAI_the_spire
     ```
 
 2. Set up a virtual environment:
 
     ```bash
-    python3 -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+    py -3.13 -m venv venv          # On Linux/macOS: python3.13 -m venv venv
+    venv\Scripts\activate          # On Linux/macOS: source venv/bin/activate
     ```
 
 3. Install the dependencies:
@@ -51,12 +52,38 @@ The game is treated as an environment, where the agent observes the current game
     pip install -r requirements.txt
     ```
 
-4. Install the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) for *Slay the Spire*
-   
-5. Create .env file in root directory and set database connection url to PostgreSQL database
-   ```
+4. For GPU training, reinstall torch from the PyTorch CUDA index. This step must
+   come **after** step 3: resolving the other packages pulls the CPU wheel from
+   PyPI over the top of a CUDA build, so installing torch first does not stick.
+
+    ```bash
+    pip install --force-reinstall torch --index-url https://download.pytorch.org/whl/cu128
+    ```
+
+   `cu128` suits an Ampere card (RTX 30xx) on a recent driver; pick the index
+   matching your CUDA runtime from [pytorch.org](https://pytorch.org/get-started/locally/).
+   Skipping this step leaves a working CPU build. Verify with:
+
+    ```bash
+    python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+    ```
+
+5. Install the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) for *Slay the Spire*
+
+6. Copy `.env.example` to `.env` and fill in your database URL:
+
+    ```bash
+    cp .env.example .env           # On Windows: copy .env.example .env
+    ```
+
+   `DATABASE_URL` is the only environment variable the code reads:
+
+    ```
     DATABASE_URL=postgresql://<username>:<password>@localhost:<port>/<db_name>
-   ```
+    ```
+
+   Tables are created automatically on the first run of `main.py`; you only need
+   the database itself to exist and the credentials to be valid.
 
 ## Usage
 

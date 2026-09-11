@@ -3,9 +3,14 @@ from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from environment.run_env import run_environment
 from model.model_utils import update_model
+from db.session import init_db
 import torch as th
 
 def main():
+    # Creating the schema used to happen as a side effect of importing
+    # db.session; it is now explicit so that importing does not need a database.
+    init_db()
+
     num_envs = 4
     base_port = 9999
     experience_queue = Queue()
