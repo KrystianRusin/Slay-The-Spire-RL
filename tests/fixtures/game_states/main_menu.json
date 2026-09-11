@@ -1,0 +1,11 @@
+{
+  "available_commands": [
+    "start",
+    "state",
+    "key",
+    "click",
+    "wait"
+  ],
+  "ready_for_command": true,
+  "in_game": false
+}

@@ -13,3 +13,7 @@ performance_metrics.png
 performance_metrics Day 1.png
 .env
 slay_the_spire.db
+.scratch/
+
+# Test artefacts
+.pytest_cache/

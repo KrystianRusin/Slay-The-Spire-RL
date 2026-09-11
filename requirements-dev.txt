@@ -1,0 +1,9 @@
+# Test dependencies. Kept out of requirements.txt so a training container does
+# not carry them (ticket 16).
+#
+#   pip install -r requirements-dev.txt
+#   pytest
+
+-r requirements.txt
+
+pytest==9.1.1
