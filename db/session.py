@@ -1,27 +1,50 @@
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from db.models import Base 
+
+from db.models import Base
 
 load_dotenv()
 
-database_url = os.getenv('DATABASE_URL')
+# The engine and session factory are built lazily rather than at import time.
+# Connecting (or creating tables) while the module is being imported makes every
+# module that transitively touches the database unimportable without a live,
+# correctly-credentialed Postgres - which breaks unit tests and any container
+# that starts before the database is healthy.
+_engine = None
+_session_factory = None
 
-engine = create_engine(database_url)
 
-# Create the tables in the database
-Base.metadata.create_all(engine)
+def get_engine():
+    """Return the process-wide engine, creating it on first use."""
+    global _engine
+    if _engine is None:
+        database_url = os.getenv("DATABASE_URL")
+        if not database_url:
+            raise RuntimeError(
+                "DATABASE_URL is not set. Copy .env.example to .env and fill it in."
+            )
+        _engine = create_engine(database_url)
+    return _engine
 
-# Set up the session
-SessionLocal = sessionmaker(bind=engine)
 
-def get_db_session():
+def init_db():
+    """Create any missing tables.
+
+    Call this explicitly from an entry point. It used to run as an import-time
+    side effect of this module.
     """
-    Provides a new database session.
+    Base.metadata.create_all(get_engine())
+
+
+def SessionLocal():
+    """Return a new database session.
+
+    Named as it is because call sites use it like the sessionmaker it replaced.
     """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    global _session_factory
+    if _session_factory is None:
+        _session_factory = sessionmaker(bind=get_engine())
+    return _session_factory()
