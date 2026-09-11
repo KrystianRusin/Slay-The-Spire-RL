@@ -1,19 +1,51 @@
+import itertools
+import os
 import socket
 import sys
 import json
 import time
+
+# Set this to a directory to capture every game state that passes through the
+# middleman. The captures are the raw material for tests/fixtures/game_states -
+# play until you have hit the screens you need, then copy the interesting ones
+# in. Unset (the default), capturing is off and training writes nothing extra.
+CAPTURE_DIR_VAR = "STS_CAPTURE_DIR"
+
+_capture_sequence = itertools.count()
 
 def log_message(message):
     """Log messages to a file."""
     with open("middleman_log.txt", "a") as log_file:
         log_file.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - {message}\n")
 
-def save_game_state(game_state_json):
-    """Save the game state to a file with a timestamp."""
+def save_game_state(state):
+    """Write one game state to the capture directory, if capturing is enabled.
+
+    Named by screen type so the screens you are missing are obvious from a
+    directory listing, and pretty-printed so a committed fixture is reviewable.
+    """
+    capture_dir = os.environ.get(CAPTURE_DIR_VAR)
+    if not capture_dir:
+        return
+
+    game_state = state.get("game_state")
+    if isinstance(game_state, dict):
+        screen = game_state.get("screen_type") or "unknown"
+    else:
+        screen = "no_game"
+
     timestamp = time.strftime("%Y%m%d_%H%M%S")
-    filename = f"game_state_{timestamp}.json"
-    with open(filename, 'w') as f:
-        f.write(game_state_json)
+    sequence = next(_capture_sequence)
+    path = os.path.join(capture_dir, f"{screen.lower()}_{timestamp}_{sequence:04d}.json")
+
+    try:
+        os.makedirs(capture_dir, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+            f.write("\n")
+    except OSError as e:
+        # Capturing is a debugging aid; never let it interrupt a run.
+        log_message(f"Could not capture game state to {path}: {e}")
 
 def find_free_port(start_port=9999):
     """Finds a free port starting from `start_port` and increments by 1 until a free port is found."""
@@ -51,6 +83,8 @@ def handle_gym_client(gym_client_socket):
             except json.JSONDecodeError:
                 log_message("Received invalid JSON. Waiting for the next update...")
                 continue
+
+            save_game_state(game_state)
 
             # Save the valid game state to resend if needed
             last_game_state_json = game_state_json
