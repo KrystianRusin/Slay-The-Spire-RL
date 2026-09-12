@@ -1,24 +1,17 @@
 import numpy as np
 from stable_baselines3.common.buffers import RolloutBuffer
-from collections import defaultdict
-import torch as th
+
 
 class CustomRolloutBuffer(RolloutBuffer):
-    def __init__(self, buffer_size, observation_space, action_space, device, gamma=0.99, gae_lambda=0.95, n_envs=1):
-        super().__init__(buffer_size, observation_space, action_space, device, gamma, gae_lambda, n_envs)
+    """Single-environment rollout buffer for dict observations.
 
-        # Instead of single numpy array, we store observation component separately
-        self.observations = {key: np.zeros((self.buffer_size, self.n_envs, *space.shape), dtype=space.dtype)
-                             for key, space in observation_space.spaces.items()}
-        self.values = np.zeros((self.buffer_size, self.n_envs), dtype=np.float32)
-        self.device = device
+    Every per-step array is one-dimensional of buffer length; each observation
+    component is stored at its own space shape. The base constructor sizes all
+    of them by calling reset.
+    """
 
     def reset(self):
-        """
-        Reset the buffer by filling it with zeros for each observation component.
-        """
-        # Reset dictionary based observations since standard SB3 rollout buffer does not
-        self.observations = {key: np.zeros((self.buffer_size, self.n_envs, *space.shape), dtype=space.dtype)
+        self.observations = {key: np.zeros((self.buffer_size, *space.shape), dtype=space.dtype)
                              for key, space in self.observation_space.spaces.items()}
         self.actions = np.zeros((self.buffer_size, self.action_dim), dtype=np.float32)
         self.rewards = np.zeros((self.buffer_size,), dtype=np.float32)
@@ -26,87 +19,68 @@ class CustomRolloutBuffer(RolloutBuffer):
         self.dones = np.zeros((self.buffer_size,), dtype=np.float32)
         self.advantages = np.zeros((self.buffer_size,), dtype=np.float32)
         self.old_log_prob = np.zeros((self.buffer_size,), dtype=np.float32)
-        self.log_prob = np.zeros((self.buffer_size,), dtype=np.float32)
-
-        # Ensure value predictions are reset
-        self.values = np.zeros((self.buffer_size,), dtype=np.float32) 
+        self.values = np.zeros((self.buffer_size,), dtype=np.float32)
         self.pos = 0
         self.full = False
 
     def add(self, obs, action, reward, done, value, log_prob):
-        """
-        Add a new transition to the buffer.
-        """
+        """Add one transition. done marks whether this transition ended the episode."""
         idx = self.pos
 
-        # Store dict observation components
-        for key in obs:
-            # Convert tensors to numpy arrays and store them per observation key
-            self.observations[key][idx] = obs[key].detach().cpu().numpy()
+        for key, space in self.observation_space.spaces.items():
+            self.observations[key][idx] = obs[key].detach().cpu().numpy().reshape(space.shape)
 
-        # Store other values as usual
         self.actions[idx] = action.cpu().numpy()
         self.rewards[idx] = reward
         self.dones[idx] = done
-        self.returns[idx] = value.detach().cpu().numpy()
-        self.old_log_prob[idx] = log_prob.detach().cpu().numpy()
+        self.old_log_prob[idx] = log_prob.detach().cpu().item()
+        self.values[idx] = value.detach().cpu().item()
 
-        # Store value predictions
-        self.values[idx] = value.detach().cpu().numpy()  
-
-        # increment buffer size and flag when buffer is full
         self.pos += 1
         if self.pos == self.buffer_size:
             self.full = True
 
     def get(self, batch_size=None):
-        # Ensure data is processed on the correct device (GPU)
-        device = self.device
+        """Yield minibatches over the filled steps, in a fresh random order on every call."""
+        if batch_size is None:
+            batch_size = self.pos
+        indices = np.random.permutation(self.pos)
 
-        # Loop over buffer in increments of the specified batch_size
         for start in range(0, self.pos, batch_size):
-            end = start + batch_size
-
-            # Process each observation component separately
-            obs_batch = {key: self.observations[key][start:end] for key in self.observations}
-
-            # Convert data to torch tensors, flattening observations for model consumption
+            batch_indices = indices[start:start + batch_size]
             yield {
-                "observations": {key: self.to_torch(obs).view(batch_size, -1).to(device) for key, obs in obs_batch.items()},
-                "actions": self.to_torch(self.actions[start:end]).to(device),
-                "rewards": self.to_torch(self.rewards[start:end]).to(device),
-                "dones": self.to_torch(self.dones[start:end]).to(device),
-                "values": self.to_torch(self.values[start:end]).to(device),
-                "log_probs": self.to_torch(self.old_log_prob[start:end]).flatten().to(device),
-                "advantages": self.to_torch(self.advantages[start:end]).flatten().to(device),
-                "returns": self.to_torch(self.returns[start:end]).to(device)
+                "observations": {key: self.to_torch(obs[batch_indices]) for key, obs in self.observations.items()},
+                "actions": self.to_torch(self.actions[batch_indices]),
+                "rewards": self.to_torch(self.rewards[batch_indices]),
+                "dones": self.to_torch(self.dones[batch_indices]),
+                "values": self.to_torch(self.values[batch_indices]),
+                "log_probs": self.to_torch(self.old_log_prob[batch_indices]),
+                "advantages": self.to_torch(self.advantages[batch_indices]),
+                "returns": self.to_torch(self.returns[batch_indices]),
             }
 
-
-    # Method to compute advantages and returns
     def compute_returns_and_advantage(self, last_values, dones):
+        """GAE(lambda) advantages and TD(lambda) returns over the filled steps.
 
-        # Convert last_values to numpy array for consistency with other numpy arrays
-        last_values = last_values.cpu().detach().numpy() 
+        last_values is the value of the state after the final step, and dones
+        whether that final step ended the episode.
+        """
+        last_value = last_values.detach().cpu().item()
+        last_done = np.asarray(dones, dtype=np.float32).item()
 
-        # Process buffer in reverse order to compute TD error and advantages
+        last_gae_lam = 0.0
         for step in reversed(range(self.pos)):
             if step == self.pos - 1:
-                next_non_terminal = 1.0 - dones
-                next_values = last_values
+                next_non_terminal = 1.0 - last_done
+                next_value = last_value
             else:
-                next_non_terminal = 1.0 - self.dones[step + 1]
-                next_values = self.values[step + 1]
+                next_non_terminal = 1.0 - self.dones[step]
+                next_value = self.values[step + 1]
 
-            # Ensure next_values is a NumPy array (if not already)
-            if isinstance(next_values, th.Tensor):
-                next_values = next_values.cpu().detach().numpy()
+            delta = self.rewards[step] + self.gamma * next_value * next_non_terminal - self.values[step]
+            last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
+            self.advantages[step] = last_gae_lam
 
-            # Calculate the delta (TD error) and advantages
-            delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
-            self.advantages[step] = delta + self.gamma * self.gae_lambda * next_non_terminal * (self.advantages[step + 1] if step < self.pos - 1 else 0)
-
-        # Calculate the returns as sum of advantages and predicted values
         self.returns = self.advantages + self.values
 
     def __len__(self):
