@@ -133,8 +133,8 @@ class SlayTheSpireEnv(gym.Env):
         relic_observation = get_relic_observation(game_state)
         extra_info_observation = get_extra_info_observation(game_state)
         hand_observation = get_hand_observation(combat_state)
-        deck_observation = get_deck_observation(state)
-        screen_observation = get_screen_observation(state)
+        deck_observation = get_deck_observation(game_state)
+        screen_observation = get_screen_observation(game_state)
 
         # Combine them into a full observation
         return {
@@ -231,7 +231,7 @@ class SlayTheSpireEnv(gym.Env):
                         print("Monster Kill Reward ", self.actions[self.previous_action])
                         reward += 20
 
-        if self.previous_state.get("screen_type", None) == "NONE" and self.state.get("screen_type", None) == "COMBAT_REWARD":
+        if previous_game_state.get("screen_type") == "NONE" and current_game_state.get("screen_type") == "COMBAT_REWARD":
             print("Combat Ended Reward ")
             reward += 40
 

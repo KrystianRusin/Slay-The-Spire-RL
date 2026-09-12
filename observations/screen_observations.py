@@ -6,46 +6,24 @@ from util.vocabularies import (card_rarity_vocab, card_type_vocab, card_vocab,
                                relic_vocab, rest_vocab, reward_type_vocab,
                                screen_type_vocab)
 
-MAX_SCREEN_OBSERVATION_SIZE = 50  # Example size, set this to the largest observation size needed
+MAX_SCREEN_OBSERVATION_SIZE = 50  # The width the environment declares for the screen component
 
 def get_screen_observation(game_state):
     screen_type = game_state.get("screen_type", "NONE")
     screen_state = game_state.get("screen_state", {})
-    
-    # Tokenize the screen_type
+
     screen_type_token = screen_type_vocab.id_of(screen_type)
+    handler = SCREEN_HANDLERS.get(screen_type, handle_default_screen)
 
-    # Get the observation from the appropriate screen handler
-    if screen_type == "SHOP_SCREEN":
-        observation = handle_shop_screen(screen_state, screen_type_token)
-    elif screen_type == "REST":
-        observation = handle_rest_screen(screen_state, screen_type_token)
-    elif screen_type == "MAP":
-        observation = handle_map_screen(screen_state, screen_type_token)
-    elif screen_type == "HAND_SELECT":
-        observation = handle_hand_select_screen(screen_state, screen_type_token)
-    elif screen_type == "EVENT":
-        observation = handle_event_screen(screen_state, screen_type_token)
-    elif screen_type == "CHEST":
-        observation = handle_chest_screen(screen_state, screen_type_token)
-    elif screen_type == "COMBAT_REWARD":
-        observation = handle_combat_reward_screen(screen_state, screen_type_token)
-    elif screen_type == "CARD_REWARD":
-        observation = handle_card_reward_screen(screen_state, screen_type_token)
-    elif screen_type == "BOSS_REWARD":
-        observation = handle_boss_reward_screen(screen_state, screen_type_token)
-    elif screen_type == "GRID":
-        observation = handle_grid_screen(screen_state, screen_type_token)
-    else:
-        observation = handle_default_screen(screen_state, screen_type_token)
+    return fit_to_width(handler(screen_state, screen_type_token))
 
-    # Pad the observation to the maximum size
+
+def fit_to_width(observation):
+    """Pad or truncate one handler's output to the declared screen width."""
     if len(observation) < MAX_SCREEN_OBSERVATION_SIZE:
         padding = np.zeros(MAX_SCREEN_OBSERVATION_SIZE - len(observation), dtype=np.float32)
-        observation = np.concatenate([observation, padding])
-
-    return observation
-
+        return np.concatenate([observation, padding])
+    return np.asarray(observation[:MAX_SCREEN_OBSERVATION_SIZE], dtype=np.float32)
 
 
 def handle_shop_screen(screen_state, screen_type_token):
@@ -146,7 +124,7 @@ def handle_map_screen(screen_state, screen_type_token):
 
     return np.array([screen_type_token, first_node_chosen, *current_node_observation, boss_available, *np.array(next_nodes_observation).flatten()], dtype=np.float32)
 
-def handle_hand_select_screen(screen_state):
+def handle_hand_select_screen(screen_state, screen_type_token):
     # Extract the max number of cards that can be selected
     max_cards = screen_state.get("max_cards", 0)
     can_pick_zero = float(screen_state.get("can_pick_zero", False))
@@ -182,14 +160,14 @@ def handle_hand_select_screen(screen_state):
     # Combine the observations for the selected cards and the hand
     # Flattened to keep consistency with the observation space
     combined_observation = np.concatenate([
-        np.array([float(max_cards), can_pick_zero], dtype=np.float32),  # Meta information
+        np.array([screen_type_token, float(max_cards), can_pick_zero], dtype=np.float32),
         selected_observation.flatten(),  # Flatten the selected cards array
         hand_observation.flatten()  # Flatten the hand array
     ])
     
     return combined_observation
 
-def handle_event_screen(screen_state):
+def handle_event_screen(screen_state, screen_type_token):
     # Tokenize the event_id
     event_id_token = event_id_vocab.id_of(screen_state.get("event_id", "UNKNOWN"))
     
@@ -211,7 +189,7 @@ def handle_event_screen(screen_state):
     
     # Combine event_id with options observation
     event_observation = np.concatenate([
-        np.array([float(event_id_token)], dtype=np.float32),  # Event ID as a float
+        np.array([screen_type_token, float(event_id_token)], dtype=np.float32),
         options_observation  # Flattened options array
     ])
     
@@ -374,12 +352,20 @@ def handle_grid_screen(screen_state, screen_type_token):
         selected_cards_observation  # Flattened selected cards observation
     ])
     
-    # Ensure the observation is padded or truncated to 50 values
-    max_observation_size = 50
-    if len(combined_observation) < max_observation_size:
-        padding = np.zeros(max_observation_size - len(combined_observation), dtype=np.float32)
-        combined_observation = np.concatenate([combined_observation, padding])
-    elif len(combined_observation) > max_observation_size:
-        combined_observation = combined_observation[:max_observation_size]
-    
     return combined_observation
+
+
+# Every screen type with a handler of its own. Anything else falls through to
+# handle_default_screen, which carries the screen-type token and nothing more.
+SCREEN_HANDLERS = {
+    "SHOP_SCREEN": handle_shop_screen,
+    "REST": handle_rest_screen,
+    "MAP": handle_map_screen,
+    "HAND_SELECT": handle_hand_select_screen,
+    "EVENT": handle_event_screen,
+    "CHEST": handle_chest_screen,
+    "COMBAT_REWARD": handle_combat_reward_screen,
+    "CARD_REWARD": handle_card_reward_screen,
+    "BOSS_REWARD": handle_boss_reward_screen,
+    "GRID": handle_grid_screen,
+}
