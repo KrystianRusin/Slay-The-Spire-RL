@@ -1,3 +1,4 @@
+import copy
 import torch as th
 import socket
 import os
@@ -12,6 +13,12 @@ import json
 from util.data_processor import process_game_state, get_next_game_id
 from util.game_over_tracking import update_game_stats_on_game_over
 from util.card_tracking import track_card_performance
+
+def hand_off_rollout(rollout_buffer, experience_queue):
+    """Queue a completed rollout for the learner and clear the buffer for the next one."""
+    # Queue.put pickles on a background thread, so it must get a copy the reset cannot reach.
+    experience_queue.put(copy.deepcopy(rollout_buffer))
+    rollout_buffer.reset()
 
 def run_environment(env_id, port, experience_queue, n_steps=2048):
     """
@@ -110,8 +117,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
 
             if len(rollout_buffer) >= n_steps:
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
-                experience_queue.put(rollout_buffer)
-                rollout_buffer.reset()
+                hand_off_rollout(rollout_buffer, experience_queue)
 
                 reload_counter += 1
                 if reload_counter % reload_interval == 0:
