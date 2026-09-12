@@ -1,8 +1,55 @@
-# Keras 3 (bundled with TensorFlow 2.20+) dropped keras.preprocessing.text.
-# tf_keras is the Keras 2 compatibility package that still provides it.
-# Ticket 03 replaces this with a plain vocabulary map and drops the
-# TensorFlow dependency entirely.
-from tf_keras.preprocessing.text import Tokenizer
+"""Integer ids for the game names that appear in a state payload.
+
+Each vocabulary is a fixed list of names numbered from 1, with 0 reserved for
+anything the list does not have. `ALL_VOCABULARIES` at the bottom of this file
+names them all.
+"""
+
+UNKNOWN_ID = 0
+
+
+class Vocabulary:
+    """A fixed list of game names, numbered from 1.
+
+    Ids are positional, so append to add a name: reordering or removing one
+    renumbers the rest and invalidates a policy trained on the old numbering.
+
+    Lookup is on the whole name, case-insensitively and ignoring surrounding
+    whitespace. It is never split on spaces or punctuation, so "Body Slam" is
+    one name rather than two words.
+    """
+
+    def __init__(self, label, names):
+        self.label = label
+        self.names = []
+        self.duplicates = []
+        self._ids = {}
+        for name in names:
+            key = self._key(name)
+            if key in self._ids:
+                # Strike and Defend are listed once per character class.
+                self.duplicates.append(name)
+                continue
+            self.names.append(name)
+            self._ids[key] = len(self.names)
+
+    @staticmethod
+    def _key(name):
+        return str(name).strip().casefold()
+
+    def id_of(self, name):
+        """The id for `name`, or UNKNOWN_ID if this vocabulary lacks it."""
+        if name is None:
+            return UNKNOWN_ID
+        return self._ids.get(self._key(name), UNKNOWN_ID)
+
+    @property
+    def max_id(self):
+        """The highest id in use. UNKNOWN_ID..max_id is the whole range."""
+        return len(self.names)
+
+    def __repr__(self):
+        return f"Vocabulary({self.label!r}, {len(self.names)} names)"
 
 # List of all card names
 card_names = [
@@ -65,22 +112,16 @@ card_names = [
     "Pride", "Burn", "Dazed", "Slimed", "Void", "Wound"
 ]
 
-# Initialize the tokenizer
-card_tokenizer = Tokenizer()
-card_tokenizer.fit_on_texts(card_names)
+card_vocab = Vocabulary("card", card_names)
 
 card_types = ["ATTACK", "SKILL", "POWER", "STATUS", "CURSE"]
 
-# Initialize the tokenizer
-card_type_tokenizer = Tokenizer()
-card_type_tokenizer.fit_on_texts(card_types)
+card_type_vocab = Vocabulary("card_type", card_types)
 
 # Define the card rarities
 card_rarities = ["BASIC", "SPECIAL", "COMMON", "UNCOMMON", "RARE", "CURSE"]
 
-# Initialize the tokenizer
-card_rarity_tokenizer = Tokenizer()
-card_rarity_tokenizer.fit_on_texts(card_rarities)
+card_rarity_vocab = Vocabulary("card_rarity", card_rarities)
 
 intents = [
     "ATTACK", "ATTACK_BUFF", "ATTACK_DEBUFF", "ATTACK_DEFEND", "BUFF", "DEBUFF",
@@ -89,9 +130,7 @@ intents = [
 ]
 
 
-# Initialize the intent tokenizer
-intent_tokenizer = Tokenizer()
-intent_tokenizer.fit_on_texts(intents)
+intent_vocab = Vocabulary("intent", intents)
 
 # List of all monster IDs
 monster_ids = [
@@ -104,13 +143,12 @@ monster_ids = [
     "Chosen", "GremlinLeader", "Healer", "Mugger", "ShelledParasite", "SnakePlant", "Snecko", 
     "SphericGuardian", "TaskMaster", "TheCommector", "TorchHead", "AwakenedOne", "Darkling", "Deca", 
     "Donu", "Exploder", "GiantHead", "Maw", "Nemesis", "OrbWalker", "Reptomancer", "Repulsor", 
-    "SnakeDagger", "Spiker", "SpireGrowth", "TimeEater", "Transient", "WritingMass, FuzzyLouseDefensive, FuzzyLouseNormal",
+    "SnakeDagger", "Spiker", "SpireGrowth", "TimeEater", "Transient",
+    "WritingMass", "FuzzyLouseDefensive", "FuzzyLouseNormal",
     "Shelled Parasite"
 ]
 
-# Initialize the monster ID tokenizer
-monster_id_tokenizer = Tokenizer()
-monster_id_tokenizer.fit_on_texts(monster_ids)
+monster_id_vocab = Vocabulary("monster_id", monster_ids)
 
 
 screen_types = [
@@ -119,17 +157,15 @@ screen_types = [
     "GRID", "HAND_SELECT", "GAME_OVER", "COMPLETE", "NONE"
 ]
 
-# Initialize the screen type tokenizer
-screen_type_tokenizer = Tokenizer()
-screen_type_tokenizer.fit_on_texts(screen_types)
+screen_type_vocab = Vocabulary("screen_type", screen_types)
 
 powers = [
     "Accuracy", "After Image", "Amplify", "Anger", "Angry", "Artifact", "Attack Burn", "Barricade", 
     "BackAttack", "BeatOfDeath", "Bias", "Berserk", "Blur", "Brutality", "Buffer", "Burst", 
     "Choked", "Collect", "Combust", "Confusion", "Converse", "Constricted", "CorpseExplosionPower", 
     "Corruption", "Creative AI", "Curiosity", "Curl Up", "Dark Embrace", "Demon Form", "Dexterity", 
-    "Double Damage", "Double Tap", "Draw Card", "Draw", "Draw Reduction", "DuplicationPower", "Duplication Power"
-    "Echo Form", "Electro", "EnergizedBlue", "Enrage", "Energized", "Entangled", "Envenom", "Equilibrium", 
+    "Double Damage", "Double Tap", "Draw Card", "Draw", "Draw Reduction", "DuplicationPower",
+    "Duplication Power", "Echo Form", "Electro", "EnergizedBlue", "Enrage", "Energized", "Entangled", "Envenom", "Equilibrium", 
     "Evolve", "Explosive", "Fading", "Feel No Pain", "Fire Breathing", "Flame Barrier", "Flight", 
     "Focus", "Nullify Attack", "Frail", "Shackled", "Generic Strength Up Power", "GrowthPower", 
     "Heatsink", "Hello", "Infinite Blades", "Hex", "IntangiblePlayer", "Intangible", "Invincible", 
@@ -145,15 +181,12 @@ powers = [
 ]
 
 
-power_tokenizer = Tokenizer()
-power_tokenizer.fit_on_texts(powers)
+power_vocab = Vocabulary("power", powers)
 
 # List of all possible map symbols
-map_symbols = ["?", "$", "T", "M", "E", "R"]
+map_symbols = ["?", "$", "T", "M", "E", "R", "B"]
 
-# Initialize the tokenizer for map symbols
-map_symbol_tokenizer = Tokenizer()
-map_symbol_tokenizer.fit_on_texts(map_symbols)
+map_symbol_vocab = Vocabulary("map_symbol", map_symbols)
 
 # Complete list of all possible relics
 relics_list = [
@@ -190,9 +223,7 @@ relics_list = [
     "Red Mask", "Spirit Poop", "Ssserpent Head", "Warped Tongs"
 ]
 
-# Initialize the tokenizer for relics
-relic_tokenizer = Tokenizer()
-relic_tokenizer.fit_on_texts(relics_list)
+relic_vocab = Vocabulary("relic", relics_list)
 
 # List of all potion types
 potion_types = [
@@ -202,12 +233,11 @@ potion_types = [
     "Explosive Potion", "FairyPotion", "FearPotion", "Fire Potion", "FocusPotion", "Fruit Juice", "GamblersBrew",
     "GhostInAJar", "HeartOfIron", "LiquidBronze", "LiquidMemories", "Poison Potion", "PotionOfCapacity", "PotionSlot",
     "PowerPotion", "Regen Potion", "SkillPotion", "SmokeBomb", "SneckoOil", "SpeedPotion", "StancePotion",
-    "SteroidPotion", "Strength Potion", "Swift Potion", "Weak Potion", "EntropicBrew", "Entropic Brew"
+    "SteroidPotion", "Strength Potion", "Swift Potion", "Weak Potion", "EntropicBrew", "Entropic Brew",
+    "Potion Slot"
 ]
 
-# Initialize the potion type tokenizer
-potion_tokenizer = Tokenizer()
-potion_tokenizer.fit_on_texts(potion_types)
+potion_vocab = Vocabulary("potion", potion_types)
 
 rest_options = [
     "rest", 
@@ -215,9 +245,7 @@ rest_options = [
     "recall"
 ]
 
-# Initialize the rest option tokenizer
-rest_tokenizer = Tokenizer()
-rest_tokenizer.fit_on_texts(rest_options)
+rest_vocab = Vocabulary("rest", rest_options)
 
 event_ids = [
     "Falling", "MindBloom", "The Moai Head", "Mysterious Sphere", "SecretPortal", 
@@ -233,14 +261,28 @@ event_ids = [
     "Transmorgrifier", "Upgrade Shring", "WeMeetAgain"
 ]
 
-event_id_tokenizer = Tokenizer()
-event_id_tokenizer.fit_on_texts(event_ids)
+event_id_vocab = Vocabulary("event_id", event_ids)
 
 reward_types = [
     "CARD", "GOLD", "POTION", "RELIC", "STOLEN_GOLD", 
     "SAPPHIRE_KEY", "EMERALD_KEY", "RUBY_KEY", "HEALING"
 ]
 
-# Initialize and fit the tokenizer for reward types
-reward_type_tokenizer = Tokenizer()
-reward_type_tokenizer.fit_on_texts(reward_types)
+reward_type_vocab = Vocabulary("reward_type", reward_types)
+
+
+ALL_VOCABULARIES = {
+    "card": card_vocab,
+    "card_type": card_type_vocab,
+    "card_rarity": card_rarity_vocab,
+    "intent": intent_vocab,
+    "monster_id": monster_id_vocab,
+    "screen_type": screen_type_vocab,
+    "power": power_vocab,
+    "map_symbol": map_symbol_vocab,
+    "relic": relic_vocab,
+    "potion": potion_vocab,
+    "rest": rest_vocab,
+    "event_id": event_id_vocab,
+    "reward_type": reward_type_vocab,
+}

@@ -7,7 +7,6 @@ This project implements a reinforcement learning agent using Maskable Proximal P
 - [Project Overview](#project-overview)
 - [Setup and Installation](#setup-and-installation)
 - [Usage](#usage)
-- [Running the Tests](#running-the-tests)
 - [Training the Agent](#training-the-agent)
 - [Observation and Action Spaces](#observation-and-action-spaces)
 - [Reward Function](#reward-function)
@@ -103,49 +102,6 @@ The model will periodically save its progress to a file named maskable_ppo_slay_
 In order to use multiple Slay The Spire Environments, first ensure that all games are running `middleman_process.py` through the communication mod
 
 Then edit `num_envs` in the main process and set it equal to the number of game instances you have open, then just run `main.py`
-
-## Running the Tests
-
-The tests need no database, no GPU and no running copy of the game: they work
-from committed game-state fixtures. From a clean checkout, with the virtual
-environment active:
-
-```bash
-pip install -r requirements-dev.txt
-pytest
-```
-
-`requirements-dev.txt` pulls in `requirements.txt`, so that is the only install
-step. Two tests are expected to fail and are marked accordingly:
-
-- `test_observations_conform_to_the_declared_space` checks that every
-  observation component lands inside the space the environment declares for
-  it. It does not today - raw HP, tokenizer IDs, map rows and negative sentinel
-  costs all escape their declared bounds - and it is the specification for
-  ticket 05.
-- `test_an_unlisted_card_name_does_not_crash_the_pipeline` feeds in a name the
-  hard-coded vocabulary does not have. That raises `IndexError` today, and is
-  the specification for ticket 03.
-
-To read either failure in full, including the report naming every component
-that is out of bounds:
-
-```bash
-pytest tests/test_observation_conformance.py --runxfail
-```
-
-Both markers are strict, so once those tickets land the tests fail by
-*passing*, which is the signal to delete the marker. Note what conformance
-cannot see: ticket 04's dead wiring leaves the deck component all zeros and the
-screen component on its default handler, both of which are comfortably in
-bounds. Those are ticket 04's own criteria to test.
-
-### Fixtures
-
-`tests/fixtures/game_states/` holds Communication Mod payloads covering combat,
-the card reward, map, shop and rest screens, game over, and the pre-run main
-menu. See the README in that directory for what each one covers and how to
-capture more by setting `STS_CAPTURE_DIR` before starting the middleman.
 
 ## Customization
 

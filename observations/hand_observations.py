@@ -1,5 +1,6 @@
 import numpy as np
-from util.tokenizers import card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
+from observations.observation_processing import encode_cost
+from util.vocabularies import card_rarity_vocab, card_type_vocab, card_vocab
 
 def get_hand_observation(combat_state):
     # Default to zeros if combat_state or hand is not available
@@ -14,18 +15,11 @@ def get_hand_observation(combat_state):
     hand_observation_list = []
 
     for card in hand_state[:max_hand_size]:  # Truncate if more than 10 cards
-        card_name_token = card_tokenizer.texts_to_sequences([card["name"]])[0][0] if card_tokenizer.texts_to_sequences([card["name"]]) else 0
-        card_type_token = card_type_tokenizer.texts_to_sequences([card["type"]])[0][0] if card_type_tokenizer.texts_to_sequences([card["type"]]) else 0
-        card_rarity_token = card_rarity_tokenizer.texts_to_sequences([card["rarity"]])[0][0] if card_rarity_tokenizer.texts_to_sequences([card["rarity"]]) else 0
+        card_name_token = card_vocab.id_of(card["name"])
+        card_type_token = card_type_vocab.id_of(card["type"])
+        card_rarity_token = card_rarity_vocab.id_of(card["rarity"])
 
-        # Handle card cost
-        cost = card.get("cost", None)
-        if cost is None:
-            card_cost = -1
-        elif cost == 'X':
-            card_cost = -2
-        else:
-            card_cost = float(cost)
+        card_cost = encode_cost(card)
 
         # Construct card observation
         card_observation = [

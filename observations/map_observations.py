@@ -1,5 +1,5 @@
 import numpy as np
-from util.tokenizers import map_symbol_tokenizer
+from util.vocabularies import map_symbol_vocab
 
 def get_map_observation(game_state):
     map_state = game_state.get("map", [])
@@ -7,8 +7,7 @@ def get_map_observation(game_state):
     map_observation = []
 
     for node in map_state[:max_map_nodes]:
-        symbol_sequence = map_symbol_tokenizer.texts_to_sequences([node["symbol"]])
-        map_symbol_token = symbol_sequence[0][0] if symbol_sequence and symbol_sequence[0] else 0
+        map_symbol_token = map_symbol_vocab.id_of(node["symbol"])
         node_observation = [map_symbol_token, node["x"], node["y"], len(node.get("children", []))]
         map_observation.append(node_observation)
 
