@@ -6,7 +6,7 @@ from collections import deque
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
-from util.communication import receive_full_json, handle_end_of_episode
+from util.communication import FramedConnection, handle_end_of_episode
 from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
 import json
@@ -32,6 +32,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client_socket.settimeout(10)
     client_socket.connect(("localhost", port))
+    connection = FramedConnection(client_socket)
 
     # Initialize the environment
     env = SlayTheSpireEnv({})
@@ -68,7 +69,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
 
         while not done:
             try:
-                game_state = receive_full_json(client_socket)
+                game_state = connection.receive_json()
             except json.JSONDecodeError as e:
                 print(f"Failed to decode JSON in environment {env_id}: {e}")
                 continue
@@ -89,7 +90,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
             action, _states = model.predict(obs_numpy, action_masks=action_mask_numpy)
             action = int(action)
             chosen_command = env.actions[action].text
-            client_socket.sendall(chosen_command.encode('utf-8'))
+            connection.send(chosen_command)
 
             # Call the central processing function to handle game state checks and updates
             process_game_state(game_state, chosen_command, game_id)
@@ -144,6 +145,6 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
 
         episode += 1
   
-        handle_end_of_episode(client_socket)
+        handle_end_of_episode(connection)
 
     client_socket.close()
