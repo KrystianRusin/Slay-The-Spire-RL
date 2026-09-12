@@ -5,6 +5,8 @@ import sys
 import json
 import time
 
+from util.communication import FramedConnection
+
 # Set this to a directory to capture every game state that passes through the
 # middleman. The captures are the raw material for tests/fixtures/game_states -
 # play until you have hit the screens you need, then copy the interesting ones
@@ -61,11 +63,8 @@ def find_free_port(start_port=9999):
             port += 1  # Increment the port number and try again
 
 def handle_gym_client(gym_client_socket):
-    """Handle communication with the gym client."""
-    last_game_state_json = None  # Store the last game state sent to the gym client
-
-    # Set a timeout on the socket when receiving data from the gym client
-    gym_client_socket.settimeout(10)  # 10 seconds timeout
+    """Relay game states to the gym client and its chosen commands back to the game."""
+    connection = FramedConnection(gym_client_socket)
 
     while True:
         try:
@@ -86,30 +85,15 @@ def handle_gym_client(gym_client_socket):
 
             save_game_state(game_state)
 
-            # Save the valid game state to resend if needed
-            last_game_state_json = game_state_json
+            connection.send(game_state_json)
 
-            # Forward the valid game state to the gym client
-            gym_client_socket.sendall(game_state_json.encode('utf-8'))
+            # The game sends nothing until it gets a command, so block without a timeout.
+            command = connection.receive()
+            log_message(f"Received command from gym client: {command}")
 
-            # Receive the response (chosen action) from the gym client
-            while True:
-                try:
-                    response = gym_client_socket.recv(4096)
-                    if response:
-                        # Print the received command to stdout
-                        command = response.decode('utf-8')
-                        log_message(f"Received command from gym client: {command}")
-
-                        # Send the response back to the game via stdout
-                        sys.stdout.write(command + "\n")
-                        sys.stdout.flush()
-                        log_message(f"Sent command to game: {command}")
-                        break  # Break out of the inner loop to process next game state
-                except socket.timeout:
-                    # Timeout occurred, check if new game state is available
-                    log_message("No response from gym client within timeout period, checking for new game state.")
-                    break  # Break to read the next game state
+            sys.stdout.write(command + "\n")
+            sys.stdout.flush()
+            log_message(f"Sent command to game: {command}")
 
         except Exception as e:
             log_message(f"Exception: {e}")
@@ -125,7 +109,7 @@ def main():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(("0.0.0.0", port))
     server.listen(5)
-    sys.stdout.write(f"{port}\n")  # Inform the game about the port being used
+    sys.stdout.write("ready\n")  # Communication Mod waits for this before sending game states
     sys.stdout.flush()
     log_message(f"Middleman process started and listening on port {port}.")
 
