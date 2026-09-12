@@ -388,7 +388,7 @@ class SlayTheSpireEnv(gym.Env):
         """Boolean mask over self.actions, True where the action is legal in state.
 
         Legality comes from the game: the commands it offers, the cards, potions,
-        targets and choices in the state. The loop guards and the rule against
+        targets and choices in the state. The RETURN loop guard and the rule against
         ending a turn before playing are preferences on top, dropped whenever they
         would leave no action legal.
         """
@@ -420,8 +420,6 @@ class SlayTheSpireEnv(gym.Env):
             last_command = self.actions[self.curr_action].command
             if last_command in LOOP_BACK_AFTER:
                 discouraged[self.actions_by_command["return"]] = True
-            if last_command == "leave":
-                discouraged[self.action_ids["CHOOSE 0"]] = True
 
         if not self.action_taken and valid[self.actions_by_command["play"]].any():
             discouraged[self.actions_by_command["end"]] = True

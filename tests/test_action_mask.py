@@ -143,15 +143,6 @@ def test_return_is_illegal_straight_after(last_action):
     assert "RETURN" not in legal_actions(env)
 
 
-def test_the_first_choice_is_illegal_straight_after_leaving():
-    env = env_in(load_payload("shop_screen"))
-
-    take(env, "LEAVE")
-
-    assert "CHOOSE 0" not in legal_actions(env)
-    assert "CHOOSE 1" in legal_actions(env)
-
-
 def test_a_loop_guard_never_leaves_nothing_legal():
     only_return = copy.deepcopy(load_payload("map_screen"))
     only_return["available_commands"] = ["return", "key", "click", "wait", "state"]
