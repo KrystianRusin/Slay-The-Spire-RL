@@ -168,7 +168,7 @@ def reward_for(previous, current, action="END"):
     env = SlayTheSpireEnv(current)
     env.previous_state = previous
     env.state = current
-    env.previous_action = env.actions.index(action)
+    env.previous_action = env.action_ids[action]
     return env.calculate_reward()
 
 
@@ -184,3 +184,10 @@ def test_finishing_a_combat_is_rewarded():
     did_not_end = reward_for(before, still_in_combat)
 
     assert ended - did_not_end == pytest.approx(COMBAT_ENDED_REWARD)
+
+
+def test_the_reward_needs_no_previous_state():
+    env = SlayTheSpireEnv(load_payload("combat_with_monsters"))
+    env.previous_action = env.action_ids["END"]
+
+    assert env.calculate_reward() == 0
