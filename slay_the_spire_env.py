@@ -4,6 +4,7 @@ import numpy as np
 from gymnasium import spaces
 from util.vocabularies import screen_type_vocab
 import random
+from typing import NamedTuple, Optional
 
 from observations.player_observations import get_player_observation
 from observations.hand_observations import get_hand_observation
@@ -15,6 +16,82 @@ from observations.extra_info_observations import get_extra_info_observation
 from observations.deck_observations import get_deck_observation
 from observations.screen_observations import get_screen_observation
 
+# After any of these, RETURN would step straight back to the screen just left.
+LOOP_BACK_AFTER = {"proceed", "choose", "return"}
+
+
+class Action(NamedTuple):
+    """One entry of the action table, parsed from its command text."""
+    text: str
+    command: str
+    use: Optional[bool] = None
+    index: Optional[int] = None
+    target: Optional[int] = None
+
+
+def parse_action(text):
+    """Parse a command such as 'POTION Use 0 1' or 'PLAY 3' into an Action.
+
+    Card numbers are 1-based in the command and 0-based in the record.
+    """
+    words = text.split()
+    command = words[0].lower()
+    if command == "potion":
+        target = int(words[3]) if len(words) == 4 else None
+        return Action(text, command, use=words[1] == "Use", index=int(words[2]), target=target)
+    if command == "play":
+        target = int(words[2]) if len(words) == 3 else None
+        return Action(text, command, index=int(words[1]) - 1, target=target)
+    if command == "choose":
+        return Action(text, command, index=int(words[1]))
+    return Action(text, command)
+
+
+def combat_turn(state):
+    """The combat turn number in a socket payload, or None outside combat."""
+    game_state = (state or {}).get("game_state") or {}
+    combat_state = game_state.get("combat_state") or {}
+    return combat_state.get("turn")
+
+
+def potion_is_legal(action, game_state, live_targets):
+    potions = game_state.get("potions", [])
+    if action.index >= len(potions):
+        return False
+    potion = potions[action.index]
+    if not action.use:
+        return bool(potion["can_discard"]) and action.target is None
+    if not potion["can_use"]:
+        return False
+    if potion["requires_target"]:
+        return action.target in live_targets
+    return action.target is None
+
+
+def play_is_legal(action, combat_state, live_targets):
+    hand = combat_state.get("hand", [])
+    if action.index >= len(hand):
+        return False
+    card = hand[action.index]
+    if not card["is_playable"]:
+        return False
+    if card["has_target"]:
+        return action.target in live_targets
+    return action.target is None
+
+
+def choice_is_legal(action, game_state):
+    choices = game_state.get("choice_list", [])
+    if not choices:
+        return True
+    if action.index >= len(choices):
+        return False
+    if game_state.get("screen_type") == "COMBAT_REWARD" and "potion" in choices[action.index].lower():
+        potions = game_state.get("potions", [])
+        return any(potion["id"] == "Potion Slot" for potion in potions)
+    return True
+
+
 class SlayTheSpireEnv(gym.Env):
     def __init__(self, initial_state):
         super(SlayTheSpireEnv, self).__init__()
@@ -22,11 +99,15 @@ class SlayTheSpireEnv(gym.Env):
         self.previous_state = None
         self.previous_action = None
         self.curr_action = None
-        self.action_taken = False  # Define the available commands and action space permutations
+        self.action_taken = False
         self.recent_actions = []  # Store recent actions to avoid loops
         self.recent_action_limit = 5
         self.commands = ['start', 'potion', 'play', 'end', 'proceed', 'return', 'choose', 'confirm', "leave"]
         self.action_space, self.actions = self.create_action_space()
+        self.action_ids = {action.text: i for i, action in enumerate(self.actions)}
+        self.actions_by_command = {}
+        for i, action in enumerate(self.actions):
+            self.actions_by_command.setdefault(action.command, []).append(i)
 
         # Define observation space (preserving the structure you provided)
         self.observation_space = self.create_observation_space()
@@ -51,7 +132,7 @@ class SlayTheSpireEnv(gym.Env):
         actions.extend(['END', 'PROCEED', 'RETURN', 'CONFIRM', "LEAVE"])
         for choice_index in range(20):
             actions.append(f'CHOOSE {choice_index}')
-        return spaces.Discrete(len(actions)), actions
+        return spaces.Discrete(len(actions)), [parse_action(action) for action in actions]
 
     def create_observation_space(self):
 
@@ -174,7 +255,10 @@ class SlayTheSpireEnv(gym.Env):
         # Add the action to the recent action list
         if len(self.recent_actions) >= self.recent_action_limit:
             self.recent_actions.pop(0)
-        self.recent_actions.append(self.actions[action])
+        self.recent_actions.append(self.actions[action].text)
+
+        if combat_turn(self.state) is not None and self.actions[action].command != "end":
+            self.action_taken = True
 
         # Calculate the reward based on the action taken and state transition
         reward = self.calculate_reward()
@@ -191,21 +275,18 @@ class SlayTheSpireEnv(gym.Env):
 
         return observation, reward, done, {}
 
-    def get_valid_actions(self):
-        available_commands = self.state.get('available_commands', [])
-        valid_actions = [i for i, action in enumerate(self.actions) if action.split()[0].lower() in available_commands]
-        return valid_actions
-
     def update_game_state(self, state):
         self.previous_state = copy.deepcopy(self.state) 
         self.state = state
+        if combat_turn(state) != combat_turn(self.previous_state):
+            self.action_taken = False
 
     def calculate_reward(self):
         reward = 0
-        invalid_action_mask = self.get_invalid_action_mask(self.previous_state)
         # Check if previous_state and current state exist
         if self.previous_state is None or self.state is None or self.previous_action is None:
             return reward
+        taken = self.actions[self.previous_action]
 
         previous_game_state = self.previous_state.get('game_state', None)
         current_game_state = self.state.get('game_state', None)
@@ -222,13 +303,13 @@ class SlayTheSpireEnv(gym.Env):
         if len(previous_combat_state) > 0:
             for prev_monster, curr_monster in zip(previous_monsters, current_monsters):
                 if curr_monster.get('current_hp', 0) < prev_monster.get('current_hp', 0):
-                    print("Monster Damage Reward ", self.actions[self.previous_action])
+                    print("Monster Damage Reward ", taken.text)
                     max_hp = curr_monster.get('max_hp', 1)
                     health_diff = prev_monster.get('current_hp', 0) - curr_monster.get('current_hp', 0)
                     percentage_damage = health_diff / max_hp
                     reward += percentage_damage * 10
                     if curr_monster.get('current_hp', 0) == 0 and prev_monster.get('current_hp', 0) > 0:
-                        print("Monster Kill Reward ", self.actions[self.previous_action])
+                        print("Monster Kill Reward ", taken.text)
                         reward += 20
 
         if previous_game_state.get("screen_type") == "NONE" and current_game_state.get("screen_type") == "COMBAT_REWARD":
@@ -239,28 +320,28 @@ class SlayTheSpireEnv(gym.Env):
         previous_hp = previous_game_state.get('current_hp', 0)
         current_hp = current_game_state.get('current_hp', 0)
         if current_hp < previous_hp:
-            print("HP Damage Penalty ", self.actions[self.previous_action])
+            print("HP Damage Penalty ", taken.text)
             reward -= (previous_hp - current_hp) * 3
                 
         # Check for floor progression
         if current_game_state.get('floor', 0) > previous_game_state.get('floor', 0):
-            print("Floor Climbing Reward ", self.actions[self.previous_action])
+            print("Floor Climbing Reward ", taken.text)
             reward += 10
                 
         # Additional reward for potion use
-        if self.actions[self.previous_action].startswith('POTION Use'):
-            print("Potion Use Reward ", self.actions[self.previous_action])
+        if taken.command == "potion" and taken.use:
+            print("Potion Use Reward ", taken.text)
             reward += 10
 
-        if self.actions[self.previous_action].startswith('POTION Discard'):
-            print("Potion Discard Penalty ", self.actions[self.previous_action])
+        if taken.command == "potion" and not taken.use:
+            print("Potion Discard Penalty ", taken.text)
             reward -= 10
 
         # Reward for acquiring a relic
         previous_relics = previous_game_state.get('relics', [])
         current_relics = current_game_state.get('relics', [])
         if len(current_relics) > len(previous_relics):
-            print("Relic taken reward ", self.actions[self.previous_action])
+            print("Relic taken reward ", taken.text)
             reward += 50  # Adjust the reward value as you see fit
 
         # Reward/Penalty for gold changes
@@ -268,10 +349,10 @@ class SlayTheSpireEnv(gym.Env):
         current_gold = current_game_state.get('gold', 0)
         gold_difference = current_gold - previous_gold
         if gold_difference > 0:
-            print("Gold Gained Reward ", self.actions[self.previous_action])
+            print("Gold Gained Reward ", taken.text)
             reward += (gold_difference / 10)  # 1 point for each 10 gold gained
         elif gold_difference < 0:
-            print("Gold Lost Penalty ", self.actions[self.previous_action])
+            print("Gold Lost Penalty ", taken.text)
             reward += (gold_difference * 0.05)  # -0.05 points for each gold lost
 
         # Reward for adding a card to the deck
@@ -281,20 +362,20 @@ class SlayTheSpireEnv(gym.Env):
             new_card = current_deck[-1]  # Assuming the new card is added at the end
             rarity = new_card.get('rarity', 'COMMON').upper()  # Default to 'COMMON' if rarity is not found
             if rarity == 'COMMON':
-                print("Common Card Reward ", self.actions[self.previous_action])
+                print("Common Card Reward ", taken.text)
                 reward += 3
             elif rarity == 'UNCOMMON':
-                print("Uncommon Card Reward", self.actions[self.previous_action])
+                print("Uncommon Card Reward", taken.text)
                 reward += 4.3
             elif rarity == 'RARE':
-                print("Rare Card Reward ", self.actions[self.previous_action])
+                print("Rare Card Reward ", taken.text)
                 reward += 10
 
         # Reward for removing CURSE cards from the deck
         previous_curse_count = sum(1 for card in previous_deck if card.get('rarity', '').upper() == 'CURSE')
         current_curse_count = sum(1 for card in current_deck if card.get('rarity', '').upper() == 'CURSE')
         if current_curse_count < previous_curse_count:
-            print("Curse Removal Reward ", self.actions[self.previous_action])
+            print("Curse Removal Reward ", taken.text)
             reward += 15
         
         # Small penalty per action to encourage efficiency
@@ -303,139 +384,54 @@ class SlayTheSpireEnv(gym.Env):
         # Return the calculated reward
         return reward
     
-    def get_invalid_action_mask(self, state):
-        invalid_action_mask = np.zeros(len(self.actions), dtype=bool)
+    def get_valid_action_mask(self, state):
+        """Boolean mask over self.actions, True where the action is legal in state.
 
-        # Process available commands
-        available_commands = state.get('available_commands', [])
-        for i, action in enumerate(self.actions):
-            command = action.split()[0].lower()
-            if command not in available_commands:
-                invalid_action_mask[i] = True
+        Legality comes from the game: the commands it offers, the cards, potions,
+        targets and choices in the state. The loop guards and the rule against
+        ending a turn before playing are preferences on top, dropped whenever they
+        would leave no action legal.
+        """
+        valid = np.zeros(len(self.actions), dtype=bool)
 
-        # Check if 'game_state' exists
-        game_state = state.get('game_state', None)
+        game_state = state.get("game_state")
         if not game_state:
-            # If game_state doesn't exist, assume that only START commands are valid
-            for i, action in enumerate(self.actions):
-                if action not in ["START IRONCLAD 0", "START SILENT 0"]:
-                    invalid_action_mask[i] = True
-            return ~invalid_action_mask  # Invert mask before returning
+            valid[self.actions_by_command["start"]] = True
+            return valid
 
-        # Check if all potion slots are filled
-        potions = game_state.get('potions', [])
-        all_slots_filled = all(potion['id'] != "Potion Slot" for potion in potions)
-        
-        # Handle Potion actions
-        for i, action in enumerate(self.actions):
-            parts = action.split()
-            if parts[0].lower() == 'potion':
-                use_discard = 0 if parts[1].lower() == 'use' else 1
-                potion_slot = int(parts[2])
-                
-                if potion_slot >= len(potions):
-                    invalid_action_mask[i] = True
-                    continue
+        combat_state = game_state.get("combat_state") or {}
+        live_targets = {
+            i for i, monster in enumerate(combat_state.get("monsters", []))
+            if not monster.get("is_gone", False)
+        }
+        legality = {
+            "potion": lambda action: potion_is_legal(action, game_state, live_targets),
+            "play": lambda action: play_is_legal(action, combat_state, live_targets),
+            "choose": lambda action: choice_is_legal(action, game_state),
+        }
 
-                potion = potions[potion_slot]
+        for command in set(state.get("available_commands", [])):
+            is_legal = legality.get(command, lambda action: True)
+            for i in self.actions_by_command.get(command, []):
+                valid[i] = is_legal(self.actions[i])
 
-                if not potion['can_use'] and use_discard == 0:
-                    invalid_action_mask[i] = True
-                    continue
-                if not potion['can_discard'] and use_discard == 1:
-                    invalid_action_mask[i] = True
-                    continue
-                if potion['requires_target']:
-                    if len(parts) < 4:
-                        invalid_action_mask[i] = True
-                        continue
-                    
-                    target_index = int(parts[3])
-                    monsters = game_state.get('combat_state', {}).get('monsters', [])
-                    valid_monster_indices = [idx for idx, monster in enumerate(monsters) if not monster.get('is_gone', False)]
-                    
-                    if target_index not in valid_monster_indices:
-                        invalid_action_mask[i] = True
-                        continue
+        discouraged = np.zeros_like(valid)
+        if self.curr_action is not None:
+            last_command = self.actions[self.curr_action].command
+            if last_command in LOOP_BACK_AFTER:
+                discouraged[self.actions_by_command["return"]] = True
+            if last_command == "leave":
+                discouraged[self.action_ids["CHOOSE 0"]] = True
 
-                if not potion['requires_target'] and len(parts) == 4:
-                    invalid_action_mask[i] = True
+        if not self.action_taken and valid[self.actions_by_command["play"]].any():
+            discouraged[self.actions_by_command["end"]] = True
 
-        # Handle choice-related actions
-        choice_list = game_state.get('choice_list', [])
-        screen_type = game_state.get('screen_type', '')
-        if len(choice_list) != 0:
-            for i, action in enumerate(self.actions):
-                parts = action.split()
-                if parts[0].lower() == 'choose':
-                    choice_index = int(parts[1])
-                    if choice_index >= len(choice_list):
-                        invalid_action_mask[i] = True
-                        continue
-                    
-                    # Invalidate choosing a potion if all slots are filled
-                    if screen_type == "COMBAT_REWARD" and all_slots_filled:
-                        if "potion" in choice_list[choice_index].lower():
-                            invalid_action_mask[i] = True
-
-        # Prevent "RETURN" action immediately after "PROCEED"
-        if self.previous_action is not None:
-            previous_command = self.actions[self.previous_action].split()[0].lower()
-            if previous_command == 'proceed' or previous_command == "choose" or previous_command == "return":
-                for i, action in enumerate(self.actions):
-                    if action.split()[0].lower() == 'return':
-                        invalid_action_mask[i] = True
-            if previous_command == 'leave':
-                for i, action in enumerate(self.actions):
-                    if action.lower() == 'choose 0':
-                        invalid_action_mask[i] = True
-
-        # Handle combat-related actions
-        combat_state = game_state.get('combat_state', None)
-        if not combat_state:
-            # If combat_state doesn't exist, restrict combat-related actions
-            for i, action in enumerate(self.actions):
-                if action.startswith('PLAY'):
-                    invalid_action_mask[i] = True
-            return ~invalid_action_mask  # Invert mask before returning
-
-        hand = combat_state.get('hand', [])
-        monsters = combat_state.get('monsters', [])
-        has_playable_cards = any(card.get('is_playable') for card in hand)
-
-        # If no action has been taken and there are playable cards, invalidate "END"
-        if not self.action_taken and has_playable_cards:
-            for i, action in enumerate(self.actions):
-                if action.lower() == 'end':
-                    invalid_action_mask[i] = True
-
-        valid_monster_indices = [i for i, monster in enumerate(monsters) if not monster['is_gone']]
-        for i, action in enumerate(self.actions):
-            parts = action.split()
-            if parts[0].lower() == 'play':
-                card_index = int(parts[1]) - 1
-                if card_index >= len(hand):
-                    invalid_action_mask[i] = True
-                    continue
-                card = hand[card_index]
-                if not card['is_playable']:
-                    invalid_action_mask[i] = True
-                    continue
-                if card['has_target'] and len(parts) < 3:
-                    invalid_action_mask[i] = True
-                    continue
-                if not card['has_target'] and len(parts) == 3:
-                    invalid_action_mask[i] = True
-                    continue
-                if len(parts) == 3:
-                    target_index = int(parts[2])
-                    if target_index not in valid_monster_indices:
-                        invalid_action_mask[i] = True
-
-        return ~invalid_action_mask  # Invert mask before returning
+        preferred = valid & ~discouraged
+        return preferred if preferred.any() else valid
 
     def check_if_done(self):
         game_state = self.state.get("game_state", None)
         if not game_state:
             return False
         return self.state['game_state'].get('screen_type') == "GAME_OVER"
+

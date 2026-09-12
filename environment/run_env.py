@@ -74,14 +74,14 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
             obs = env.flatten_observation(game_state)
             obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in obs.items()}
 
-            action_mask = env.get_invalid_action_mask(game_state)
+            action_mask = env.get_valid_action_mask(game_state)
             action_mask_tensor = th.tensor(action_mask, dtype=th.bool).unsqueeze(0).to(device)
             obs_numpy = {key: value.cpu().numpy() for key, value in obs_tensor.items()}
             action_mask_numpy = action_mask_tensor.cpu().numpy()
 
             action, _states = model.predict(obs_numpy, action_masks=action_mask_numpy)
             action = int(action)
-            chosen_command = env.actions[action]
+            chosen_command = env.actions[action].text
             client_socket.sendall(chosen_command.encode('utf-8'))
 
             # Call the central processing function to handle game state checks and updates
