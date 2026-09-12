@@ -12,18 +12,23 @@ pytest
 `requirements-dev.txt` pulls in `requirements.txt`, so that is the only install
 step.
 
-## The expected failure
+## The expected failures
 
-`test_observations_conform_to_the_declared_space` is marked
-`xfail(strict=True)`: observations do not yet fit the space the environment
-declares for them. When they do, the test fails by *passing* and the marker
-should be deleted.
+Two tests are marked `xfail(strict=True)`. Each fails by *passing* once the
+work it waits on lands, at which point the marker should be deleted.
 
-Its report names every component that is out of bounds:
+`test_observations_conform_to_the_declared_space` - observations do not yet fit
+the space the environment declares for them. Its report names every component
+that is out of bounds:
 
 ```bash
 pytest tests/test_observation_conformance.py --runxfail
 ```
+
+`test_no_handler_builds_more_features_than_the_declared_width` - the
+`HAND_SELECT` and `GRID` screen handlers build more features than the 50 the
+screen component declares, so `get_screen_observation` truncates them. Fixing
+it means widening the component, not rewiring anything.
 
 ## Fixtures
 
