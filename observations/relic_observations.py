@@ -1,5 +1,5 @@
 import numpy as np
-from util.tokenizers import relic_tokenizer
+from util.vocabularies import relic_vocab
 
 def get_relic_observation(game_state):
     relics = game_state.get("relics", [])
@@ -7,7 +7,7 @@ def get_relic_observation(game_state):
     relic_observation = []
 
     for relic in relics[:max_relics]:
-        relic_token = relic_tokenizer.texts_to_sequences([relic["name"]])[0][0] if relic_tokenizer.texts_to_sequences([relic["name"]]) else 0
+        relic_token = relic_vocab.id_of(relic["name"])
         relic_observation.append([float(relic_token), float(relic.get("counter", -1))])
 
     while len(relic_observation) < max_relics:

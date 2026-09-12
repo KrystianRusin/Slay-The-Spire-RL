@@ -2,7 +2,7 @@ import gymnasium as gym
 import copy
 import numpy as np
 from gymnasium import spaces
-from util.tokenizers import screen_type_tokenizer
+from util.vocabularies import screen_type_vocab
 import random
 
 from observations.player_observations import get_player_observation
@@ -79,7 +79,7 @@ class SlayTheSpireEnv(gym.Env):
         # Additional game state information (screen_type, deck size, etc.)
         extra_info_space = spaces.Box(
             low=np.array([0, 0, 0, 0, 0]),  # Lower bounds for each field
-            high=np.array([100, 100, 1000, 20, len(screen_type_tokenizer.word_index)]),  # Upper bounds
+            high=np.array([100, 100, 1000, 20, screen_type_vocab.max_id]),  # Upper bounds
             shape=(5,),
             dtype=np.float32
         )

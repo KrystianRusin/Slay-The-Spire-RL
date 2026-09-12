@@ -1,10 +1,10 @@
 import numpy as np
-from util.tokenizers import screen_type_tokenizer
+from util.vocabularies import screen_type_vocab
 
 def get_extra_info_observation(game_state):
     # Retrieve screen_type, deck size, floor, gold, and ascension level from the game state
     screen_type = game_state.get("screen_type", "NONE")
-    screen_type_token = screen_type_tokenizer.texts_to_sequences([screen_type])[0][0] if screen_type_tokenizer.texts_to_sequences([screen_type]) else 0
+    screen_type_token = screen_type_vocab.id_of(screen_type)
     
     extra_info = np.array([
         len(game_state.get("deck", [])),  # Deck size

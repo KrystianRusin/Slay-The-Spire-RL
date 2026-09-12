@@ -1,11 +1,7 @@
 import numpy as np
-from util.tokenizers import power_tokenizer
-import sys
-import os
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+from util.vocabularies import power_vocab
 
-from observations.observation_processing import tokenize_powers
+from observations.observation_processing import encode_powers
 
 def get_player_observation(game_state):
     current_hp = game_state.get("current_hp", 0)
@@ -22,7 +18,7 @@ def get_player_observation(game_state):
         block = player_state.get("block", 0)
         energy = player_state.get("energy", 0)
         powers = player_state.get("powers", [])
-        powers_observation = tokenize_powers(powers, max_powers, power_tokenizer)
+        powers_observation = encode_powers(powers, max_powers, power_vocab)
 
     player_observation = np.array([current_hp, max_hp, block, energy], dtype=np.float32)
     player_full_observation = np.concatenate([player_observation, powers_observation])

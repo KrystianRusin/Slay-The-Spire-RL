@@ -57,11 +57,7 @@ def named_payload(request):
 
 @pytest.fixture(scope="session")
 def env_class():
-    """The environment class itself, so a test can build one per payload.
-
-    Imported lazily: slay_the_spire_env pulls in TensorFlow through the
-    tokenizers, which costs several seconds. Ticket 03 removes that.
-    """
+    """The environment class itself, so a test can build one per payload."""
     from slay_the_spire_env import SlayTheSpireEnv
 
     return SlayTheSpireEnv

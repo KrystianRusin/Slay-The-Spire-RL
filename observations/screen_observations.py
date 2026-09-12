@@ -1,8 +1,10 @@
 import numpy as np
-from util.tokenizers import screen_type_tokenizer, map_symbol_tokenizer, relic_tokenizer, potion_tokenizer, card_tokenizer, rest_tokenizer, reward_type_tokenizer, event_id_tokenizer, card_tokenizer, card_type_tokenizer, card_rarity_tokenizer
-from observation_processing import tokenize_card
 
-import numpy as np
+from observations.observation_processing import encode_card, encode_cost
+from util.vocabularies import (card_rarity_vocab, card_type_vocab, card_vocab,
+                               event_id_vocab, map_symbol_vocab, potion_vocab,
+                               relic_vocab, rest_vocab, reward_type_vocab,
+                               screen_type_vocab)
 
 MAX_SCREEN_OBSERVATION_SIZE = 50  # Example size, set this to the largest observation size needed
 
@@ -11,7 +13,7 @@ def get_screen_observation(game_state):
     screen_state = game_state.get("screen_state", {})
     
     # Tokenize the screen_type
-    screen_type_token = screen_type_tokenizer.texts_to_sequences([screen_type])[0][0] if screen_type_tokenizer.texts_to_sequences([screen_type]) else 0
+    screen_type_token = screen_type_vocab.id_of(screen_type)
 
     # Get the observation from the appropriate screen handler
     if screen_type == "SHOP_SCREEN":
@@ -57,7 +59,7 @@ def handle_shop_screen(screen_state, screen_type_token):
         card_observation = [
             float(card["cost"]),
             float(card["price"]),
-            float(card_tokenizer.texts_to_sequences([card["id"]])[0][0] if card_tokenizer.texts_to_sequences([card["id"]]) else 0)
+            float(card_vocab.id_of(card["name"]))
         ]
         cards_observation.append(card_observation)
     while len(cards_observation) < max_cards:
@@ -68,7 +70,7 @@ def handle_shop_screen(screen_state, screen_type_token):
     for potion in screen_state.get("potions", [])[:max_potions]:
         potion_observation = [
             float(potion["price"]),
-            float(potion_tokenizer.texts_to_sequences([potion["id"]])[0][0] if potion_tokenizer.texts_to_sequences([potion["id"]]) else 0)
+            float(potion_vocab.id_of(potion["id"]))
         ]
         potions_observation.append(potion_observation)
     while len(potions_observation) < max_potions:
@@ -79,7 +81,7 @@ def handle_shop_screen(screen_state, screen_type_token):
     for relic in screen_state.get("relics", [])[:max_relics]:
         relic_observation = [
             float(relic["price"]),
-            float(relic_tokenizer.texts_to_sequences([relic["id"]])[0][0] if relic_tokenizer.texts_to_sequences([relic["id"]]) else 0),
+            float(relic_vocab.id_of(relic["id"])),
             float(relic.get("counter", -1))
         ]
         relics_observation.append(relic_observation)
@@ -107,7 +109,7 @@ def handle_rest_screen(screen_state, screen_type_token):
     # Convert rest options into a fixed-size observation space
     max_rest_options = 3
     rest_options_observation = [
-        rest_tokenizer.texts_to_sequences([option])[0][0] if rest_tokenizer.texts_to_sequences([option]) else 0
+        rest_vocab.id_of(option)
         for option in rest_options[:max_rest_options]
     ]
     while len(rest_options_observation) < max_rest_options:
@@ -122,7 +124,7 @@ def handle_map_screen(screen_state, screen_type_token):
 
     # Encode current node
     current_node_observation = [
-        map_symbol_tokenizer.texts_to_sequences([current_node["symbol"]])[0][0] if map_symbol_tokenizer.texts_to_sequences([current_node["symbol"]]) else 0,
+        map_symbol_vocab.id_of(current_node["symbol"]),
         float(current_node["x"]),
         float(current_node["y"])
     ]
@@ -132,7 +134,7 @@ def handle_map_screen(screen_state, screen_type_token):
     next_nodes_observation = []
     for node in next_nodes[:max_next_nodes]:
         node_observation = [
-            map_symbol_tokenizer.texts_to_sequences([node["symbol"]])[0][0] if map_symbol_tokenizer.texts_to_sequences([node["symbol"]]) else 0,
+            map_symbol_vocab.id_of(node["symbol"]),
             float(node["x"]),
             float(node["y"])
         ]
@@ -155,7 +157,7 @@ def handle_hand_select_screen(screen_state):
     selected_observation = []
     
     for card in selected_cards[:max_selected_cards]:
-        card_observation = tokenize_card(card)
+        card_observation = encode_card(card)
         selected_observation.append(card_observation)
     
     while len(selected_observation) < max_selected_cards:
@@ -169,7 +171,7 @@ def handle_hand_select_screen(screen_state):
     hand_observation = []
     
     for card in hand_cards[:max_hand_size]:
-        card_observation = tokenize_card(card)
+        card_observation = encode_card(card)
         hand_observation.append(card_observation)
     
     while len(hand_observation) < max_hand_size:
@@ -189,7 +191,7 @@ def handle_hand_select_screen(screen_state):
 
 def handle_event_screen(screen_state):
     # Tokenize the event_id
-    event_id_token = event_id_tokenizer.texts_to_sequences([screen_state.get("event_id", "UNKNOWN")])[0][0] if event_id_tokenizer.texts_to_sequences([screen_state.get("event_id", "UNKNOWN")]) else 0
+    event_id_token = event_id_vocab.id_of(screen_state.get("event_id", "UNKNOWN"))
     
     # Process options
     options = screen_state.get("options", [])
@@ -225,7 +227,7 @@ def handle_combat_reward_screen(screen_state, screen_type_token):
     # Process each reward
     for reward in rewards[:max_rewards]:
         reward_type = reward.get("reward_type", "UNKNOWN")
-        reward_token = reward_type_tokenizer.texts_to_sequences([reward_type])[0][0] if reward_type_tokenizer.texts_to_sequences([reward_type]) else 0
+        reward_token = reward_type_vocab.id_of(reward_type)
         reward_observation.append(float(reward_token))
     
     # Pad with zeros if fewer than max_rewards
@@ -252,18 +254,10 @@ def handle_card_reward_screen(screen_state, screen_type_token):
     card_observation = []
     
     for card in cards[:max_cards]:  # Truncate if more than max_cards
-        card_name_token = card_tokenizer.texts_to_sequences([card["name"]])[0][0] if card_tokenizer.texts_to_sequences([card["name"]]) else 0
-        card_type_token = card_type_tokenizer.texts_to_sequences([card["type"]])[0][0] if card_type_tokenizer.texts_to_sequences([card["type"]]) else 0
-        card_rarity_token = card_rarity_tokenizer.texts_to_sequences([card["rarity"]])[0][0] if card_rarity_tokenizer.texts_to_sequences([card["rarity"]]) else 0
-        
-        # Handle card cost
-        cost = card.get("cost", None)
-        if cost is None:
-            card_cost = -1
-        elif cost == 'X':
-            card_cost = -2
-        else:
-            card_cost = float(cost)
+        card_name_token = card_vocab.id_of(card["name"])
+        card_type_token = card_type_vocab.id_of(card["type"])
+        card_rarity_token = card_rarity_vocab.id_of(card["rarity"])
+        card_cost = encode_cost(card)
         
         # Construct card observation
         card_data = [
@@ -306,7 +300,7 @@ def handle_boss_reward_screen(screen_state, screen_type_token):
     relic_observation = []
     
     for relic in relics[:max_relics]:  # Truncate if more than max_relics
-        relic_name_token = relic_tokenizer.texts_to_sequences([relic["name"]])[0][0] if relic_tokenizer.texts_to_sequences([relic["name"]]) else 0
+        relic_name_token = relic_vocab.id_of(relic["name"])
         relic_counter = float(relic.get("counter", -1))
         
         # Construct relic observation
@@ -341,7 +335,7 @@ def handle_grid_screen(screen_state, screen_type_token):
     # Tokenize and process the `cards` list
     cards_observation = []
     for card in screen_state.get("cards", [])[:max_cards]:  # Process up to max_cards
-        card_observation = tokenize_card(card)  # Assuming `tokenize_card` is used here
+        card_observation = encode_card(card)
         cards_observation.append(card_observation)
     
     # Pad if fewer than max_cards
@@ -354,7 +348,7 @@ def handle_grid_screen(screen_state, screen_type_token):
     # Process the `selected_cards` list, max 5 selected cards
     selected_cards_observation = []
     for card in screen_state.get("selected_cards", [])[:max_selected_cards]:
-        card_observation = tokenize_card(card)  # Assuming `tokenize_card` is used here
+        card_observation = encode_card(card)
         selected_cards_observation.append(card_observation)
     
     # Pad if fewer than max_selected_cards

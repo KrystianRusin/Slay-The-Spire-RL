@@ -29,14 +29,3 @@ matplotlib==3.11.1
 SQLAlchemy==2.0.52
 psycopg2-binary==2.9.13
 python-dotenv==1.2.3
-
-# --- Tokenization (TEMPORARY - removed by ticket 03) ---
-# The only use of TensorFlow in this project is the legacy Keras 2 text
-# Tokenizer in util/tokenizers.py. Keras 3, which TensorFlow 2.20+ bundles,
-# dropped keras.preprocessing.text, so tf_keras supplies the Keras 2 API.
-# Ticket 03 replaces the tokenizer with a plain vocabulary map and deletes
-# both of these lines, removing roughly 600MB from the install.
-# Pinned to 2.20.x because that is the newest TensorFlow with wheels for
-# cp313 on BOTH Windows and Linux; 2.21 is Windows-only at time of writing.
-tensorflow==2.20.0
-tf_keras==2.20.1
