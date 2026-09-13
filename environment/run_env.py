@@ -1,12 +1,11 @@
 import torch as th
-import socket
 import os
 from collections import deque
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
 from model.rollout_codec import encode_rollout
-from util.communication import FramedConnection, handle_end_of_episode
+from util.communication import GameConnection, handle_end_of_episode
 from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
 import json
@@ -27,10 +26,7 @@ def run_environment(env_id, port, publisher, n_steps=2048):
     reward_queue = deque(maxlen=10)
     highest_reward = float('-inf')
     
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.settimeout(10)
-    client_socket.connect(("localhost", port))
-    connection = FramedConnection(client_socket)
+    connection = GameConnection(("localhost", port))
 
     # Initialize the environment
     env = SlayTheSpireEnv({})
@@ -66,9 +62,6 @@ def run_environment(env_id, port, publisher, n_steps=2048):
             except json.JSONDecodeError as e:
                 print(f"Failed to decode JSON in environment {env_id}: {e}")
                 continue
-            except ConnectionError as e:
-                print(f"Connection error in environment {env_id}: {e}")
-                break
             print(f"Environment {env_id}: Game State Received")
 
             env.update_game_state(game_state)
@@ -83,7 +76,11 @@ def run_environment(env_id, port, publisher, n_steps=2048):
             action, _states = model.predict(obs_numpy, action_masks=action_mask_numpy)
             action = int(action)
             chosen_command = env.actions[action].text
-            connection.send(chosen_command)
+            try:
+                connection.send(chosen_command)
+            except ConnectionError as e:
+                print(f"Environment {env_id}: {e}; not recording the action")
+                continue
 
             game_id = process_game_state(game_state, chosen_command, game_id)
 
@@ -139,4 +136,4 @@ def run_environment(env_id, port, publisher, n_steps=2048):
   
         handle_end_of_episode(connection)
 
-    client_socket.close()
+    connection.close()

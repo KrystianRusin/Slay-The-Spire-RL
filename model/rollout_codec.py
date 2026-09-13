@@ -13,6 +13,7 @@ The header is an object:
 
     {
       "compression": "zlib",
+      "rollout_id": string identifying the rollout, unique across actors,
       "steps": number of transitions,
       "arrays": [{"name": ..., "dtype": "float32", "shape": [...], "offset": ...}, ...]
     }
@@ -20,9 +21,9 @@ The header is an object:
 Decompressed, the body is every array's bytes in C order, concatenated. Each
 "offset" is where that array starts in the decompressed body. "float32" is a
 little-endian IEEE 754 single, 4 bytes, and is the only dtype in schema
-version 1.
+version 2.
 
-Arrays in schema version 1, each with a leading dimension of steps:
+Arrays in schema version 2, each with a leading dimension of steps:
 
     observations/<key>  one per observation component, at that component's shape
     actions             (steps, 1)
@@ -31,6 +32,7 @@ Arrays in schema version 1, each with a leading dimension of steps:
 
 import json
 import struct
+import uuid
 import zlib
 
 import numpy as np
@@ -38,7 +40,7 @@ import numpy as np
 from model.custom_rollout_buffer import CustomRolloutBuffer
 
 MAGIC = b"SROL"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 FIXED_PREFIX = struct.Struct("<4sHI")
 COMPRESSION = "zlib"
 DTYPES = {"float32": np.dtype("<f4")}
@@ -49,9 +51,19 @@ STEP_FIELDS = ["actions", "rewards", "dones", "values", "old_log_prob", "advanta
 class UnsupportedSchemaVersion(ValueError):
     """The payload was written under a schema version this reader does not know."""
 
+    def __init__(self, version):
+        super().__init__(f"Rollout has schema version {version}; this reader only understands {SCHEMA_VERSION}")
+        self.version = version
 
-def encode_rollout(buffer):
-    """Encode the filled steps of a rollout buffer to bytes."""
+
+def encode_rollout(buffer, rollout_id=None):
+    """Encode the filled steps of a rollout buffer to bytes.
+
+    rollout_id is how the learner recognises a rollout delivered twice; a fresh
+    one is generated when it is not given.
+    """
+    if rollout_id is None:
+        rollout_id = uuid.uuid4().hex
     steps = buffer.pos
     arrays = {OBSERVATION_PREFIX + key: obs[:steps] for key, obs in buffer.observations.items()}
     arrays.update({name: getattr(buffer, name)[:steps] for name in STEP_FIELDS})
@@ -64,13 +76,13 @@ def encode_rollout(buffer):
         chunks.append(data)
         offset += len(data)
 
-    header = json.dumps({"compression": COMPRESSION, "steps": steps, "arrays": entries}).encode("utf-8")
+    header = json.dumps({"compression": COMPRESSION, "rollout_id": rollout_id, "steps": steps, "arrays": entries}).encode("utf-8")
     body = zlib.compress(b"".join(chunks))
     return FIXED_PREFIX.pack(MAGIC, SCHEMA_VERSION, len(header)) + header + body
 
 
 def decode_rollout(data, observation_space, action_space, device="cpu"):
-    """Decode bytes from encode_rollout into a full CustomRolloutBuffer.
+    """Decode bytes from encode_rollout into a full CustomRolloutBuffer, with its rollout_id set.
 
     Raises UnsupportedSchemaVersion for a version this reader does not know,
     and ValueError for anything else it cannot decode exactly.
@@ -79,9 +91,7 @@ def decode_rollout(data, observation_space, action_space, device="cpu"):
         raise ValueError("Data is not an encoded rollout")
     _, version, header_length = FIXED_PREFIX.unpack_from(data)
     if version != SCHEMA_VERSION:
-        raise UnsupportedSchemaVersion(
-            f"Rollout has schema version {version}; this reader only understands {SCHEMA_VERSION}"
-        )
+        raise UnsupportedSchemaVersion(version)
 
     header_end = FIXED_PREFIX.size + header_length
     try:
@@ -89,6 +99,7 @@ def decode_rollout(data, observation_space, action_space, device="cpu"):
         if header["compression"] != COMPRESSION:
             raise ValueError(f"Rollout compression {header['compression']!r} is not supported")
         body = _decompress(data[header_end:])
+        rollout_id = header["rollout_id"]
         steps = header["steps"]
         arrays = {entry["name"]: _read_array(body, entry, steps) for entry in header["arrays"]}
     except (KeyError, TypeError, zlib.error) as error:
@@ -106,6 +117,7 @@ def decode_rollout(data, observation_space, action_space, device="cpu"):
         setattr(buffer, name, arrays[name])
     buffer.pos = steps
     buffer.full = True
+    buffer.rollout_id = rollout_id
     return buffer
 
 
