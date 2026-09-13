@@ -1,37 +1,30 @@
-from sqlalchemy.orm import Session
+import logging
 from datetime import datetime
+
+from sqlalchemy.exc import SQLAlchemyError
+
 from db.models import Game
-from db.session import SessionLocal
+from db.session import session_scope
 
-def track_favorite_class(action, game_id):
+logger = logging.getLogger(__name__)
+
+
+def record_game_start(action):
+    """Record a new game for the class a START action picks.
+
+    Returns the game ID the database assigned, or None if the game could not be
+    recorded.
     """
-    Track the agent's favorite class and store it in the database.
-    """
-    if action.startswith("START"):
-        try:
-            # Extract class name from the action string
-            class_name = action.split()[1]  # "IRONCLAD" or "SILENT"
-            db: Session = SessionLocal()
-
-            # Insert a new game entry
-            new_game = Game(
-                agent_class=class_name,
-                start_time=datetime.now(),
-                floors_reached=0,  # Default value, to be updated later
-                bosses_defeated=0,  # Default value, to be updated later
-                win=False  # Default value, to be updated later
-            )
-
+    class_name = action.split()[1]
+    try:
+        with session_scope() as db:
+            new_game = Game(agent_class=class_name, start_time=datetime.now())
             db.add(new_game)
-            db.commit()
-
-            # Retrieve the generated game_id to pass it back
+            db.flush()
             game_id = new_game.game_id
-            db.close()
+    except SQLAlchemyError:
+        logger.exception("Could not record the start of a %s game", class_name)
+        return None
 
-            print(f"Game started with class '{class_name}' and added to the database with game_id: {game_id}.")
-            return game_id
-
-        except Exception as e:
-            print(f"Error while tracking favorite class: {e}")
-            return None
+    print(f"Game started with class '{class_name}' and added to the database with game_id: {game_id}.")
+    return game_id

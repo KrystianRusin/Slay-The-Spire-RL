@@ -1,38 +1,33 @@
-from util.card_tracking import track_card_pick
-from util.class_tracking import track_favorite_class
+import logging
+
 from util.boss_tracking import update_boss_count
-from sqlalchemy.orm import Session
-from db.session import SessionLocal
-from db.models import Game
+from util.card_tracking import track_card_pick
+from util.class_tracking import record_game_start
+
+logger = logging.getLogger(__name__)
+
 
 def process_game_state(game_state, action, game_id):
-    """
-    Central function to process the game state and call the appropriate utility functions.
-    """
-    screen_type = game_state.get("game_state", {}).get("screen_type")
+    """Record what the action taken on this game state means for the database.
 
-    # Check for card reward screen type
+    Returns the ID of the game in progress: a new one when the action starts a
+    game, otherwise the game_id passed in. Pass it back in on the next step.
+    """
+    if action.startswith("START"):
+        return record_game_start(action)
+
+    screen_type = game_state.get("game_state", {}).get("screen_type")
+    if screen_type not in ("CARD_REWARD", "BOSS_REWARD"):
+        return game_id
+
+    if game_id is None:
+        logger.warning("No game has been recorded yet; not tracking %s on %s", action, screen_type)
+        return None
+
     if screen_type == "CARD_REWARD":
         track_card_pick(game_state, action, game_id)
+    elif action.startswith("CHOOSE"):
+        # Taking the relic closes the screen, so this counts each boss once.
+        update_boss_count(game_id)
 
-    if screen_type == "BOSS_REWRAD":
-        update_boss_count(game_state, game_id)
-    
-    # Check for game start action
-    if action.startswith("START"):
-        track_favorite_class(action, game_id)
-
-def get_next_game_id():
-    """
-    Get the next available game ID by finding the maximum current game ID and incrementing it.
-    """
-    try:
-        db: Session = SessionLocal()
-        # Get the maximum game_id from the games table
-        max_game_entry = db.query(Game).order_by(Game.game_id.desc()).first()
-        next_game_id = max_game_entry.game_id + 1 if max_game_entry else 1  # Start from 1 if no games exist yet
-        db.close()
-        return next_game_id
-    except Exception as e:
-        print(f"Error while fetching the next game ID: {e}")
-        return None
+    return game_id

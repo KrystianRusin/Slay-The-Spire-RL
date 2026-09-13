@@ -1,8 +1,8 @@
 # Tests
 
-No database, no GPU and no running copy of the game: the suite works from
-committed game-state fixtures. From a clean checkout, with the virtual
-environment active:
+No database server, no GPU and no running copy of the game: the suite works
+from committed game-state fixtures, and database tests use a throwaway SQLite
+file. From a clean checkout, with the virtual environment active:
 
 ```bash
 pip install -r requirements-dev.txt
@@ -36,3 +36,15 @@ it means widening the component, not rewiring anything.
 card reward, map, shop and rest screens, game over, and the pre-run main menu.
 Its README covers what each one contains and how to capture more by setting
 `STS_CAPTURE_DIR` before starting the middleman.
+
+## Concurrent writers against Postgres
+
+`test_concurrent_actors_each_record_their_own_games` runs several actor
+processes writing games at once. It always runs against SQLite; to run it
+against Postgres too, point `TEST_DATABASE_URL` at an empty scratch database.
+The test creates its tables there and drops them afterwards, and refuses to run
+if any of them already exist.
+
+```bash
+TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/slay_the_spire_test pytest tests/test_data_layer.py
+```
