@@ -13,12 +13,12 @@ import json
 from util.game_over_tracking import update_game_stats_on_game_over
 from util.card_tracking import track_card_performance
 
-def hand_off_rollout(rollout_buffer, experience_queue):
-    """Queue a completed rollout for the learner, encoded, and clear the buffer for the next one."""
-    experience_queue.put(encode_rollout(rollout_buffer))
+def hand_off_rollout(rollout_buffer, publisher):
+    """Publish a completed rollout for the learner, encoded, and clear the buffer for the next one."""
+    publisher.publish(encode_rollout(rollout_buffer))
     rollout_buffer.reset()
 
-def run_environment(env_id, port, experience_queue, n_steps=2048):
+def run_environment(env_id, port, publisher, n_steps=2048):
     """
     Function to run a single agent in a separate environment.
     """
@@ -110,7 +110,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
 
             if len(rollout_buffer) >= n_steps:
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
-                hand_off_rollout(rollout_buffer, experience_queue)
+                hand_off_rollout(rollout_buffer, publisher)
 
                 reload_counter += 1
                 if reload_counter % reload_interval == 0:
