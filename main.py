@@ -3,6 +3,7 @@ from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from environment.run_env import run_environment
 from model.model_utils import update_model
+from model.rollout_codec import decode_rollout
 from db.session import init_db
 import torch as th
 
@@ -44,7 +45,8 @@ def main():
     while current_step < total_steps:
         experiences = []
         for _ in range(num_envs):
-            experiences.append(experience_queue.get())
+            encoded = experience_queue.get()
+            experiences.append(decode_rollout(encoded, model.observation_space, model.action_space, model.device))
 
         for exp in experiences:
             update_model(model, exp, current_step, total_steps)

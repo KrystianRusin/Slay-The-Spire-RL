@@ -1,4 +1,3 @@
-import copy
 import torch as th
 import socket
 import os
@@ -6,6 +5,7 @@ from collections import deque
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
+from model.rollout_codec import encode_rollout
 from util.communication import FramedConnection, handle_end_of_episode
 from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
@@ -14,9 +14,8 @@ from util.game_over_tracking import update_game_stats_on_game_over
 from util.card_tracking import track_card_performance
 
 def hand_off_rollout(rollout_buffer, experience_queue):
-    """Queue a completed rollout for the learner and clear the buffer for the next one."""
-    # Queue.put pickles on a background thread, so it must get a copy the reset cannot reach.
-    experience_queue.put(copy.deepcopy(rollout_buffer))
+    """Queue a completed rollout for the learner, encoded, and clear the buffer for the next one."""
+    experience_queue.put(encode_rollout(rollout_buffer))
     rollout_buffer.reset()
 
 def run_environment(env_id, port, experience_queue, n_steps=2048):
