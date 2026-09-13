@@ -7,13 +7,14 @@ from model.custom_rollout_buffer import CustomRolloutBuffer
 
 GAMMA = 0.97
 GAE_LAMBDA = 0.95
+ACTION_SPACE = spaces.Discrete(141)
 
 
 def make_buffer(observation_space, size=8):
     return CustomRolloutBuffer(
         buffer_size=size,
         observation_space=observation_space,
-        action_space=spaces.Discrete(141),
+        action_space=ACTION_SPACE,
         device="cpu",
         gamma=GAMMA,
         gae_lambda=GAE_LAMBDA,
