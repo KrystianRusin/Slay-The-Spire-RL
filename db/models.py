@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import declarative_base, relationship
 
 Base = declarative_base()
 
@@ -11,10 +10,10 @@ class Game(Base):
     agent_class = Column(String, nullable=False)
     start_time = Column(DateTime, nullable=False)
     end_time = Column(DateTime)
-    floors_reached = Column(Integer, nullable=False)
-    bosses_defeated = Column(Integer, nullable=False)
-    win = Column(Boolean, nullable=False)
-    reward = Column(Float, nullable=False)
+    floors_reached = Column(Integer, nullable=False, default=0)
+    bosses_defeated = Column(Integer, nullable=False, default=0)
+    win = Column(Boolean, nullable=False, default=False)
+    reward = Column(Float, nullable=False, default=0.0)
 
     # Ensure this matches the relationship
     card_picks = relationship('CardPicked', back_populates='game', cascade="all, delete-orphan")

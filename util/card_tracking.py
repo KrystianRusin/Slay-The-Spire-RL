@@ -1,45 +1,54 @@
-from sqlalchemy.orm import Session
-from db.models import CardPicked, CardPerformance
-from db.session import SessionLocal
 import json
-import math
+import logging
+
+from sqlalchemy import update
+from sqlalchemy.dialects import postgresql, sqlite
+from sqlalchemy.exc import SQLAlchemyError
+
+from db.models import CardPicked, CardPerformance
+from db.session import session_scope
+
+logger = logging.getLogger(__name__)
+
+_INSERT_BY_DIALECT = {"postgresql": postgresql.insert, "sqlite": sqlite.insert}
+
 
 def track_card_pick(game_state, action, game_id):
     """
     Track the card picked by the agent and store it in the database.
     """
-    if action.startswith("CHOOSE"):
-        try:
-            chosen_index = int(action.split()[1])
-            cards = game_state["game_state"]["screen_state"].get("cards", [])
+    if not action.startswith("CHOOSE"):
+        return
 
-            if 0 <= chosen_index < len(cards):
-                chosen_card = cards[chosen_index]
+    try:
+        chosen_index = int(action.split()[1])
+    except (IndexError, ValueError):
+        logger.warning("Could not parse a card index from %r", action)
+        return
 
-                # Collect other card options except the chosen one
-                other_options = [card["name"] for i, card in enumerate(cards) if i != chosen_index]
-                other_options_json = json.dumps(other_options)  # Convert to JSON for storage
+    cards = game_state["game_state"]["screen_state"].get("cards", [])
+    if not 0 <= chosen_index < len(cards):
+        logger.warning("Chosen card index %s is out of range for %s cards", chosen_index, len(cards))
+        return
 
-                # Database session
-                db: Session = SessionLocal()
+    chosen_card = cards[chosen_index]
+    other_options = [card["name"] for i, card in enumerate(cards) if i != chosen_index]
 
-                new_card_pick = CardPicked(
-                    game_id=game_id,
-                    card_name=chosen_card["name"],
-                    card_id=chosen_card["id"],
-                    other_options=other_options_json,
-                    agent_class=game_state["game_state"].get("class")
-                )
+    try:
+        with session_scope() as db:
+            db.add(CardPicked(
+                game_id=game_id,
+                card_name=chosen_card["name"],
+                card_id=chosen_card["id"],
+                other_options=json.dumps(other_options),
+                agent_class=game_state["game_state"].get("class"),
+            ))
+    except SQLAlchemyError:
+        logger.exception("Could not record the pick of %s in game %s", chosen_card["name"], game_id)
+        return
 
-                db.add(new_card_pick)
-                db.commit()
-                db.close()
+    print(f"Card '{chosen_card['name']}' picked and added to the database with options {other_options}.")
 
-                print(f"Card '{chosen_card['name']}' picked and added to the database with options {other_options}.")
-            else:
-                print("Chosen index is out of range.")
-        except (IndexError, ValueError):
-            print("Error parsing chosen card index from action.")
 
 def track_card_performance(game_state, floor_reached, won):
     """
@@ -47,60 +56,39 @@ def track_card_performance(game_state, floor_reached, won):
     :param game_state: The game state containing the deck information.
     :param floor_reached: The floor the agent reached in this game.
     :param won: Boolean indicating whether the game was won or lost.
+
+    Win rate is stored as a fraction between 0 and 1.
     """
-    deck = game_state.get("deck", [])
     card_counts = {}
-    
-    # Count occurrences of each card in the deck, excluding "Strike" and "Defend"
-    for card in deck:
-        if card['name'] in ["Strike", "Defend"]:
+    for card in game_state.get("deck", []):
+        if card["name"] in ["Strike", "Defend"]:
             continue
-        
-        card_id = card['id']
-        if card_id not in card_counts:
-            card_counts[card_id] = {
-                "name": card['name'],
-                "count": 1
-            }
-        else:
-            card_counts[card_id]["count"] += 1
+        name, count = card_counts.get(card["id"], (card["name"], 0))
+        card_counts[card["id"]] = (name, count + 1)
 
-    db = SessionLocal()
     try:
-        for card_id, card_info in card_counts.items():
-            card_name = card_info["name"]
-            count = card_info["count"]
-
-            # Retrieve or create the card performance entry
-            card_performance = db.query(CardPerformance).filter(CardPerformance.card_id == card_id).first()
-            
-            if card_performance:
-                # Update existing entry
-                card_performance.times_picked += count
-                card_performance.games_featured_in += 1
-
-                # Update the win rate and average floor reached
-                total_games = card_performance.games_featured_in
-                card_performance.average_floor_reached = math.floor(
-                    ((card_performance.average_floor_reached * (total_games - 1)) + floor_reached) / total_games
+        with session_scope() as db:
+            insert = _INSERT_BY_DIALECT[db.get_bind().dialect.name]
+            games_featured = CardPerformance.games_featured_in
+            # Sorted so concurrent writers lock rows in the same order and cannot deadlock.
+            for card_id in sorted(card_counts):
+                name, count = card_counts[card_id]
+                # Insert-if-missing then an in-place UPDATE, so concurrent writers never lose a count.
+                db.execute(
+                    insert(CardPerformance)
+                    .values(card_id=card_id, card_name=name, times_picked=0,
+                            average_floor_reached=0.0, win_rate=0.0, games_featured_in=0)
+                    .on_conflict_do_nothing(index_elements=[CardPerformance.card_id])
                 )
-                card_performance.win_rate = (((card_performance.win_rate * (total_games - 1)) + (1 if won else 0)) / total_games) * 100
-            else:
-                # Create a new entry
-                card_performance = CardPerformance(
-                    card_id=card_id,
-                    card_name=card_name,
-                    times_picked=count,
-                    games_featured_in=1,
-                    average_floor_reached=floor_reached,
-                    win_rate=1.0 if won else 0.0
+                db.execute(
+                    update(CardPerformance)
+                    .where(CardPerformance.card_id == card_id)
+                    .values(
+                        times_picked=CardPerformance.times_picked + count,
+                        games_featured_in=games_featured + 1,
+                        average_floor_reached=(CardPerformance.average_floor_reached * games_featured + floor_reached) / (games_featured + 1),
+                        win_rate=(CardPerformance.win_rate * games_featured + (1.0 if won else 0.0)) / (games_featured + 1),
+                    )
                 )
-                db.add(card_performance)
-
-        db.commit()
-    except Exception as e:
-        print(f"Error updating card performance: {e}")
-        db.rollback()
-    finally:
-        db.close()
-
+    except SQLAlchemyError:
+        logger.exception("Could not update card performance")

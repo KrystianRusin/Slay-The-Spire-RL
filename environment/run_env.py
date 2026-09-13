@@ -10,7 +10,6 @@ from util.communication import FramedConnection, handle_end_of_episode
 from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
 import json
-from util.data_processor import process_game_state, get_next_game_id
 from util.game_over_tracking import update_game_stats_on_game_over
 from util.card_tracking import track_card_performance
 
@@ -60,12 +59,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
         total_reward = 0
         episode_length = 0
         obs = env.reset()
-
-        # Fetch the next game ID from the database
-        game_id = get_next_game_id()
-        if game_id is None:
-            print(f"Error fetching the next game ID. Exiting.")
-            break
+        game_id = None
 
         while not done:
             try:
@@ -92,8 +86,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
             chosen_command = env.actions[action].text
             connection.send(chosen_command)
 
-            # Call the central processing function to handle game state checks and updates
-            process_game_state(game_state, chosen_command, game_id)
+            game_id = process_game_state(game_state, chosen_command, game_id)
 
             new_obs, reward, done, info = env.step(action)
             total_reward += reward
