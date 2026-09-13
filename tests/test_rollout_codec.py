@@ -48,7 +48,22 @@ def with_version(data, version):
     return bytes(patched)
 
 
-@pytest.mark.parametrize("version", [0, 2, 65535])
+def test_a_rollout_keeps_the_id_it_was_encoded_with(observation_space):
+    data = encode_rollout(fill(make_buffer(observation_space, size=4)), rollout_id="actor-3-rollout-7")
+
+    assert decode_rollout(data, observation_space, ACTION_SPACE).rollout_id == "actor-3-rollout-7"
+
+
+def test_each_rollout_encoded_without_an_id_is_given_a_distinct_one(observation_space):
+    rollout = fill(make_buffer(observation_space, size=4))
+
+    first, second = (decode_rollout(encode_rollout(rollout), observation_space, ACTION_SPACE) for _ in range(2))
+
+    assert first.rollout_id and second.rollout_id
+    assert first.rollout_id != second.rollout_id
+
+
+@pytest.mark.parametrize("version", [0, 1, 3, 65535])
 def test_an_unknown_schema_version_is_rejected(observation_space, version):
     data = with_version(encode_rollout(fill(make_buffer(observation_space, size=4))), version)
 
@@ -88,7 +103,8 @@ def drop_entry(name):
     (set_entry("observations/hand", dtype="float64", shape=[2, 10, 8]), "float64"),
     (lambda header: header.update(steps=3), "steps"),
     (drop_entry("returns"), "returns"),
-], ids=["compression", "dtype", "steps", "missing-array"])
+    (lambda header: header.pop("rollout_id"), "rollout_id"),
+], ids=["compression", "dtype", "steps", "missing-array", "missing-rollout-id"])
 def test_a_header_this_reader_cannot_honour_is_rejected(observation_space, change, message):
     data = with_header(encode_rollout(fill(make_buffer(observation_space, size=4))), change)
 
@@ -144,8 +160,9 @@ def test_the_encoding_is_readable_from_its_documented_layout(observation_space):
 
     magic, version, header, arrays = read_without_project_code(encode_rollout(rollout))
 
-    assert (magic, version) == (b"SROL", 1)
+    assert (magic, version) == (b"SROL", 2)
     assert header["compression"] == "zlib"
+    assert isinstance(header["rollout_id"], str)
     assert header["steps"] == 6
     expected_names = {f"observations/{key}" for key in observation_space.spaces} | set(FIELDS)
     assert set(arrays) == expected_names

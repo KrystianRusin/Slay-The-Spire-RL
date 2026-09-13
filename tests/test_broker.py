@@ -2,6 +2,7 @@
 
 import multiprocessing
 import os
+import time
 import uuid
 from contextlib import closing
 
@@ -11,7 +12,7 @@ import torch as th
 from confluent_kafka.admin import AdminClient, ConfigResource, NewTopic, ResourceType
 
 from broker.config import BrokerConfig
-from broker.rollouts import RolloutPublisher, consume_rollouts
+from broker.rollouts import RolloutConsumer, RolloutPublisher
 from broker.topics import ROLLOUT_PARTITIONS, ROLLOUT_TOPIC_CONFIG, ensure_topics
 from learner import train
 from model.rollout_codec import decode_rollout, encode_rollout
@@ -43,20 +44,39 @@ def topic_state(config):
     return len(partitions), {name: entry.value for name, entry in entries.items()}
 
 
+def actor_rollout(observation_space, actor_id):
+    buffer = fill(make_buffer(observation_space, size=ROLLOUT_STEPS))
+    buffer.rewards[:] = actor_id
+    return encode_rollout(buffer)
+
+
 def publish_as_actor(config, actor_id, observation_space):
     publisher = RolloutPublisher(config, actor_id)
     try:
         for _ in range(ROLLOUTS_PER_ACTOR):
-            buffer = fill(make_buffer(observation_space, size=ROLLOUT_STEPS))
-            buffer.rewards[:] = actor_id
-            publisher.publish(encode_rollout(buffer))
+            publisher.publish(actor_rollout(observation_space, actor_id))
     finally:
         publisher.close()
 
 
-def start_actors(config, count, observation_space):
+def publish_once_then_keep_playing(config, actor_id, observation_space, published):
+    publisher = RolloutPublisher(config, actor_id)
+    publisher.publish(actor_rollout(observation_space, actor_id))
+    published.set()
+    time.sleep(600)
+
+
+def publish(config, *encoded):
+    publisher = RolloutPublisher(config, actor_id=0)
+    for value in encoded:
+        publisher.publish(value)
+    publisher.close()
+
+
+def start_actors(config, count, observation_space, first_id=0):
     context = multiprocessing.get_context("spawn")
-    actors = [context.Process(target=publish_as_actor, args=(config, actor_id, observation_space)) for actor_id in range(count)]
+    actors = [context.Process(target=publish_as_actor, args=(config, actor_id, observation_space))
+              for actor_id in range(first_id, first_id + count)]
     for actor in actors:
         actor.start()
     return actors
@@ -101,9 +121,9 @@ def test_rollouts_from_separate_actor_processes_all_reach_the_learner(broker, ob
     actors = start_actors(broker, 3, observation_space)
 
     received = []
-    with closing(consume_rollouts(broker)) as rollouts:
-        for encoded in rollouts:
-            received.append(decode_rollout(encoded, observation_space, ACTION_SPACE))
+    with closing(RolloutConsumer(broker)) as deliveries:
+        for delivery in deliveries:
+            received.append(decode_rollout(delivery.value, observation_space, ACTION_SPACE))
             if len(received) == 3 * ROLLOUTS_PER_ACTOR:
                 break
     join(actors)
@@ -122,12 +142,10 @@ def test_an_incompressible_full_size_rollout_fits_on_the_topic(broker, observati
     encoded = encode_rollout(buffer)
     assert len(encoded) > 10 * 1024 * 1024
 
-    publisher = RolloutPublisher(broker, actor_id=0)
-    publisher.publish(encoded)
-    publisher.close()
+    publish(broker, encoded)
 
-    with closing(consume_rollouts(broker)) as rollouts:
-        assert next(rollouts) == encoded
+    with closing(RolloutConsumer(broker)) as deliveries:
+        assert next(iter(deliveries)).value == encoded
 
 
 def test_the_learner_trains_on_however_many_actors_are_publishing(broker, observation_space, tmp_path, monkeypatch):
@@ -137,9 +155,51 @@ def test_the_learner_trains_on_however_many_actors_are_publishing(broker, observ
     before = weights(model)
     actors = start_actors(broker, 3, observation_space)
 
-    with closing(consume_rollouts(broker)) as rollouts:
-        steps = train(model, rollouts, total_steps=3 * ROLLOUTS_PER_ACTOR * ROLLOUT_STEPS)
+    with closing(RolloutConsumer(broker)) as deliveries:
+        steps = train(model, deliveries, total_steps=3 * ROLLOUTS_PER_ACTOR * ROLLOUT_STEPS)
     join(actors)
 
     assert steps == 3 * ROLLOUTS_PER_ACTOR * ROLLOUT_STEPS
     assert any(not th.equal(old, new) for old, new in zip(before, model.policy.parameters()))
+
+
+def test_a_rollout_left_uncommitted_is_delivered_to_the_next_learner_in_the_group(broker):
+    ensure_topics(broker)
+    publish(broker, b"first", b"second")
+
+    with closing(RolloutConsumer(broker)) as deliveries:
+        received = iter(deliveries)
+        next(received).commit()
+        assert next(received).value == b"second"
+
+    with closing(RolloutConsumer(broker)) as deliveries:
+        assert next(iter(deliveries)).value == b"second"
+
+
+def test_lag_counts_the_rollouts_not_yet_committed(broker):
+    ensure_topics(broker)
+    publish(broker, b"first", b"second", b"third")
+
+    with closing(RolloutConsumer(broker)) as deliveries:
+        next(iter(deliveries)).commit()
+
+        assert deliveries.lag() == 2
+
+
+def test_the_learner_keeps_training_after_an_actor_is_killed(broker, observation_space, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    ensure_topics(broker)
+    context = multiprocessing.get_context("spawn")
+    published = context.Event()
+    doomed = context.Process(target=publish_once_then_keep_playing, args=(broker, 0, observation_space, published))
+    doomed.start()
+    assert published.wait(timeout=120)
+    doomed.kill()
+    doomed.join()
+    survivors = start_actors(broker, 2, observation_space, first_id=1)
+
+    with closing(RolloutConsumer(broker)) as deliveries:
+        steps = train(make_model(), deliveries, total_steps=(1 + 2 * ROLLOUTS_PER_ACTOR) * ROLLOUT_STEPS)
+    join(survivors)
+
+    assert steps == (1 + 2 * ROLLOUTS_PER_ACTOR) * ROLLOUT_STEPS

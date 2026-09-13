@@ -116,7 +116,7 @@ Then start one actor per game instance, pointing each at the port its middleman 
 python actor.py --env-id 0 --port 9999
 ```
 
-The learner saves its progress after every update to a file named maskable_ppo_slay_the_spire.zip.
+The learner saves its progress after every update to a file named maskable_ppo_slay_the_spire.zip, and resumes from it when restarted. A rollout the learner was working on when it stopped is delivered to it again; see `docs/adr/0003`.
 
 ## Customization
 
