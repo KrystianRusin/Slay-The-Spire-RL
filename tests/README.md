@@ -48,3 +48,14 @@ if any of them already exist.
 ```bash
 TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/slay_the_spire_test pytest tests/test_data_layer.py
 ```
+
+## Kafka
+
+`test_broker.py` runs against a real broker and is skipped unless
+`TEST_KAFKA_BOOTSTRAP_SERVERS` is set. It needs permission to create and delete
+topics.
+
+```bash
+docker run -d --name kafka -p 9092:9092 apache/kafka:4.1.1
+TEST_KAFKA_BOOTSTRAP_SERVERS=localhost:9092 pytest tests/test_broker.py
+```

@@ -1,8 +1,4 @@
-"""Handing a completed rollout from an actor to the learner's queue."""
-
-import pickle
-import threading
-from multiprocessing import Queue
+"""Handing a completed rollout from an actor to the learner."""
 
 import numpy as np
 import torch as th
@@ -16,15 +12,13 @@ N_STEPS = 4
 OBSERVATION_SPACE = spaces.Dict({"hand": spaces.Box(0, 1, shape=(3,), dtype=np.float32)})
 ACTION_SPACE = spaces.Discrete(5)
 
-_release_feeder = threading.Event()
 
+class RecordingPublisher:
+    def __init__(self):
+        self.published = []
 
-class _BlocksFeeder:
-    """Stalls the queue's feeder thread while it pickles this object."""
-
-    def __reduce__(self):
-        assert _release_feeder.wait(timeout=10), "feeder was never released"
-        return (_BlocksFeeder, ())
+    def publish(self, encoded):
+        self.published.append(encoded)
 
 
 def _filled_buffer():
@@ -41,24 +35,20 @@ def _filled_buffer():
     return buffer
 
 
-def test_queued_rollout_survives_the_actor_starting_its_next_one():
+def test_published_rollout_survives_the_actor_starting_its_next_one():
     buffer = _filled_buffer()
-    expected = pickle.loads(pickle.dumps(buffer))
-    queue = Queue()
+    expected = {name: getattr(buffer, name).copy() for name in ["actions", "rewards", "values", "old_log_prob", "returns"]}
+    expected_hand = buffer.observations["hand"].copy()
+    publisher = RecordingPublisher()
 
-    _release_feeder.clear()
-    queue.put(_BlocksFeeder())
-    hand_off_rollout(buffer, queue)
-    _release_feeder.set()
+    hand_off_rollout(buffer, publisher)
+    buffer.add({"hand": th.zeros(1, 3)}, th.tensor(0), 0.0, False, th.tensor(0.0), th.tensor(0.0))
 
-    queue.get(timeout=10)
-    received = decode_rollout(queue.get(timeout=10), OBSERVATION_SPACE, ACTION_SPACE)
+    (encoded,) = publisher.published
+    received = decode_rollout(encoded, OBSERVATION_SPACE, ACTION_SPACE)
 
     assert len(received) == N_STEPS
-    np.testing.assert_array_equal(received.observations["hand"], expected.observations["hand"])
-    np.testing.assert_array_equal(received.actions, expected.actions)
-    np.testing.assert_array_equal(received.rewards, expected.rewards)
-    np.testing.assert_array_equal(received.values, expected.values)
-    np.testing.assert_array_equal(received.old_log_prob, expected.old_log_prob)
-    np.testing.assert_array_equal(received.returns, expected.returns)
-    assert len(buffer) == 0
+    np.testing.assert_array_equal(received.observations["hand"], expected_hand)
+    for name, values in expected.items():
+        np.testing.assert_array_equal(getattr(received, name), values, err_msg=name)
+    assert len(buffer) == 1
