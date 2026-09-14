@@ -1,6 +1,7 @@
 """Message framing between the actor and the middleman over TCP."""
 
 import json
+import queue
 import socket
 import threading
 
@@ -95,37 +96,46 @@ def test_a_connection_closed_mid_message_raises():
         connection.receive()
 
 
-class ScriptedStdin:
-    """Stands in for the game's stdout: yields lines, then ends the relay."""
+class ScriptedGame:
+    """Stands in for the game's output: yields lines, then reports end of input."""
 
     def __init__(self, lines):
         self.lines = list(lines)
 
     def readline(self):
-        if not self.lines:
-            raise EOFError("script exhausted")
-        return self.lines.pop(0)
+        return self.lines.pop(0) if self.lines else ""
+
+
+def relay(middleman_end, game_input, pending_state=None):
+    """Run the middleman's relay to one client on a thread, returning a queue that gets its result or the exception it raised."""
+    outcome = queue.Queue()
+
+    def run():
+        try:
+            outcome.put(middleman_process.handle_gym_client(middleman_end, game_input, pending_state))
+        except Exception as error:
+            outcome.put(error)
+
+    threading.Thread(target=run, daemon=True).start()
+    return outcome
 
 
 def test_middleman_relays_states_and_commands_over_a_real_socket(monkeypatch, capsys):
     states = [{"available_commands": ["play"]}, {"available_commands": ["proceed"]}]
-    monkeypatch.setattr(middleman_process.sys, "stdin", ScriptedStdin(json.dumps(s) + "\n" for s in states))
     monkeypatch.setattr(middleman_process, "log_message", lambda message: None)
 
     middleman_end, actor_end = socket.socketpair()
     actor = FramedConnection(actor_end)
     actor_end.settimeout(10)
 
-    relay = threading.Thread(target=middleman_process.handle_gym_client, args=(middleman_end,))
-    relay.start()
+    outcome = relay(middleman_end, ScriptedGame(json.dumps(s) + "\n" for s in states))
     try:
         assert actor.receive_json() == states[0]
         actor.send("PLAY 1 0")
         assert actor.receive_json() == states[1]
         actor.send("PROCEED")
-        relay.join(timeout=10)
+        assert isinstance(outcome.get(timeout=10), middleman_process.GameClosed)
     finally:
         actor_end.close()
 
-    assert not relay.is_alive()
     assert capsys.readouterr().out.splitlines() == ["PLAY 1 0", "PROCEED"]

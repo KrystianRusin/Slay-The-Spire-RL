@@ -5,7 +5,7 @@ from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
 from model.policy_follower import PolicyFollower
 from model.rollout_codec import encode_rollout
-from util.communication import GameConnection, handle_end_of_episode
+from util.communication import handle_end_of_episode
 from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
 import json
@@ -17,9 +17,9 @@ def hand_off_rollout(rollout_buffer, publisher):
     publisher.publish(encode_rollout(rollout_buffer))
     rollout_buffer.reset()
 
-def run_environment(env_id, port, publisher, policy_source, n_steps=2048):
+def run_environment(env_id, connection, publisher, policy_source, n_steps=2048):
     """
-    Function to run a single agent in a separate environment.
+    Function to run a single agent in a separate environment, playing the game behind connection.
 
     The policy follows the newest weights read from policy_source, switching only between rollouts.
     """
@@ -27,8 +27,6 @@ def run_environment(env_id, port, publisher, policy_source, n_steps=2048):
     episode_lengths = []
     reward_queue = deque(maxlen=10)
     highest_reward = float('-inf')
-    
-    connection = GameConnection(("localhost", port))
 
     # Initialize the environment
     env = SlayTheSpireEnv({})

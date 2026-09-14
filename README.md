@@ -82,7 +82,7 @@ The game is treated as an environment, where the agent observes the current game
     KAFKA_BOOTSTRAP_SERVERS=localhost:9092
     ```
 
-   Tables are created automatically when an actor starts; you only need the
+   Tables are created automatically when an actor or middleman starts; you only need the
    database itself to exist and the credentials to be valid. The rollout and
    policy topics are likewise created by whichever of the learner or an actor
    starts first, as declared in `broker/topics.py`.
@@ -106,6 +106,13 @@ each rollout switches to the newest one and logs how far behind the learner
 that rollout was. Actors can be started or stopped at any time; see
 `docs/adr/0004`.
 
+Actors find their games through a registry in the database. Each game's
+middleman listens on a free port and registers it; each actor claims a game no
+other actor has, and looks up where it listens every time it connects. A
+middleman that restarts registers its new port and the actor reconnects to it.
+An actor that cannot reach its game within its retries exits with an error.
+See `docs/adr/0005`.
+
 Ensure that *Slay the Spire* is running and that the Communication Mod is set to run middleman_process.py
 
 Start the learner:
@@ -114,11 +121,20 @@ Start the learner:
 python learner.py
 ```
 
-Then start one actor per game instance, pointing each at the port its middleman listens on:
+Then start one actor per game instance. Games and actors can start in any order:
 
 ```bash
-python actor.py --env-id 0 --port 9999
+python actor.py --env-id 0
 ```
+
+`--env-id` must be different for each actor. `--max-retries` sets how many
+reconnection attempts an actor makes before giving up.
+
+The middleman reads these optional settings from the environment or `.env`:
+
+- `STS_ADVERTISED_HOST`: the host actors dial to reach this machine's games. Defaults to `localhost`.
+- `STS_MIDDLEMAN_PORT`: a fixed port to listen on. Unset, each middleman takes any free port.
+- `STS_GAME_ID`: the game's id in the registry. Only needed when the game starts the middleman through a wrapper script, and then it must differ per game.
 
 The learner saves its progress after every update to a file named maskable_ppo_slay_the_spire.zip, and resumes from it when restarted. A rollout the learner was working on when it stopped is delivered to it again; see `docs/adr/0003`.
 
