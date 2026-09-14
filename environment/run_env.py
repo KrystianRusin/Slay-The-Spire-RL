@@ -1,9 +1,9 @@
 import torch as th
-import os
 from collections import deque
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
+from model.policy_follower import PolicyFollower
 from model.rollout_codec import encode_rollout
 from util.communication import GameConnection, handle_end_of_episode
 from util.plotting import plot_performance_metrics
@@ -17,9 +17,11 @@ def hand_off_rollout(rollout_buffer, publisher):
     publisher.publish(encode_rollout(rollout_buffer))
     rollout_buffer.reset()
 
-def run_environment(env_id, port, publisher, n_steps=2048):
+def run_environment(env_id, port, publisher, policy_source, n_steps=2048):
     """
     Function to run a single agent in a separate environment.
+
+    The policy follows the newest weights read from policy_source, switching only between rollouts.
     """
     episode_rewards = []
     episode_lengths = []
@@ -32,9 +34,9 @@ def run_environment(env_id, port, publisher, n_steps=2048):
     env = SlayTheSpireEnv({})
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
     model = MaskablePPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=device)
-    
-    reload_interval = 100
-    reload_counter = 0
+    follower = PolicyFollower(model.policy, policy_source)
+    follower.wait_for_first()
+    print(f"Environment {env_id}: Running policy version {follower.version}")
 
     rollout_buffer = CustomRolloutBuffer(
         buffer_size=n_steps,
@@ -109,11 +111,12 @@ def run_environment(env_id, port, publisher, n_steps=2048):
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
                 hand_off_rollout(rollout_buffer, publisher)
 
-                reload_counter += 1
-                if reload_counter % reload_interval == 0:
-                    if os.path.exists("maskable_ppo_slay_the_spire.zip"):
-                        model = MaskablePPO.load("maskable_ppo_slay_the_spire", env=env)
-                        print(f"Environment {env_id}: Reloaded updated model weights.")
+                collected_under = follower.version
+                switched = follower.update()
+                print(f"Environment {env_id}: Published a rollout collected under policy version {collected_under}; "
+                      f"the learner is at version {follower.learner_version}")
+                if switched:
+                    print(f"Environment {env_id}: Running policy version {follower.version}")
             if done:
                 screen_state = game_state['game_state'].get('screen_state', {})
                 victory = screen_state.get('victory', False)

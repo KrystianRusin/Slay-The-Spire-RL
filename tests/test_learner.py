@@ -9,6 +9,7 @@ from sb3_contrib.ppo_mask import MaskablePPO
 import learner
 from learner import train
 from model.checkpoint import load_checkpoint
+from model.policy_codec import decode_policy
 from model.rollout_codec import UnsupportedSchemaVersion, encode_rollout
 from slay_the_spire_env import SlayTheSpireEnv
 
@@ -33,6 +34,19 @@ class FakeDelivery:
         if self._on_commit:
             self._on_commit(self)
         self.committed = True
+
+
+class FakePublisher:
+    """The policy topic as the learner writes to it."""
+
+    def __init__(self):
+        self.published = []
+
+    def publish(self, value):
+        self.published.append(decode_policy(value))
+
+    def versions(self):
+        return [policy.version for policy in self.published]
 
 
 @pytest.fixture(autouse=True)
@@ -172,3 +186,35 @@ def test_an_undecodable_rollout_is_committed_and_training_continues(tmp_path):
 
     assert poison.committed and good.committed
     assert steps == ROLLOUT_STEPS
+
+
+def test_each_update_is_published_as_the_next_version_before_its_rollout_is_committed(tmp_path):
+    model = make_model()
+    publisher = FakePublisher()
+    published_at_commit = []
+
+    def check_published(_delivery):
+        published_at_commit.append(publisher.versions()[-1])
+
+    deliveries = [FakeDelivery(encoded_rollout(model), on_commit=check_published) for _ in range(2)]
+    train(model, deliveries, total_steps=2 * ROLLOUT_STEPS, save_path=tmp_path / "policy", publisher=publisher)
+
+    assert publisher.versions() == [0, 1, 2]
+    assert published_at_commit == [1, 2]
+    newest = make_model()
+    publisher.published[-1].apply_to(newest.policy)
+    assert all(th.equal(old, new) for old, new in zip(weights(model), newest.policy.parameters()))
+
+
+def test_rollouts_that_are_skipped_publish_no_new_version(tmp_path):
+    model = make_model()
+    save_path = tmp_path / "policy"
+    applied = encoded_rollout(model, "rollout-a")
+    train(model, [FakeDelivery(applied)], total_steps=10 * ROLLOUT_STEPS, save_path=save_path)
+
+    model, progress = restart(save_path)
+    publisher = FakePublisher()
+    train(model, [FakeDelivery(applied), FakeDelivery(b"not a rollout")], total_steps=10 * ROLLOUT_STEPS,
+          progress=progress, save_path=save_path, publisher=publisher)
+
+    assert publisher.versions() == [1]

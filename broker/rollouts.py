@@ -3,12 +3,12 @@
 import logging
 from functools import partial
 
-from confluent_kafka import Consumer, KafkaException, Producer
+from confluent_kafka import Consumer, KafkaException
 
 from broker.config import MAX_MESSAGE_BYTES
+from broker.publisher import Publisher
 
 POLL_SECONDS = 1.0
-FLUSH_SECONDS = 60.0
 TIMEOUT_SECONDS = 30.0
 # Each rollout waiting is one more update the policy moves on before that rollout is used; see docs/adr/0003.
 LAG_WARNING_ROLLOUTS = 5
@@ -16,39 +16,11 @@ LAG_WARNING_ROLLOUTS = 5
 logger = logging.getLogger(__name__)
 
 
-class RolloutPublisher:
+class RolloutPublisher(Publisher):
     """Publishes one actor's rollouts to the rollout topic, keyed by actor id."""
 
     def __init__(self, config, actor_id):
-        self.topic = config.rollout_topic
-        self.key = str(actor_id)
-        self._producer = Producer({
-            "bootstrap.servers": config.bootstrap_servers,
-            "client.id": f"actor-{actor_id}",
-            "message.max.bytes": MAX_MESSAGE_BYTES,
-            # Rollouts are already zlib-compressed by the codec.
-            "compression.type": "none",
-            # The Java client's partitioner, so producers in any language agree on each key's partition.
-            "partitioner": "murmur2_random",
-        })
-
-    def publish(self, encoded):
-        """Block until the broker has the rollout, raising KafkaException if delivery fails."""
-        failures = []
-
-        def on_delivery(error, _message):
-            if error is not None:
-                failures.append(error)
-
-        self._producer.produce(self.topic, value=encoded, key=self.key, on_delivery=on_delivery)
-        remaining = self._producer.flush(FLUSH_SECONDS)
-        if failures:
-            raise KafkaException(failures[0])
-        if remaining:
-            raise KafkaException(f"Rollout was not delivered within {FLUSH_SECONDS}s")
-
-    def close(self):
-        self._producer.flush(FLUSH_SECONDS)
+        super().__init__(config, config.rollout_topic, key=str(actor_id), client_id=f"actor-{actor_id}")
 
 
 class Delivery:

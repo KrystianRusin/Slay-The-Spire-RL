@@ -34,8 +34,8 @@ Rollouts are published as the message payload itself.
   `max.request.size` and consumer fetch sizes to match, all as committed topic
   and client configuration. 16MB clears the incompressible worst case, so
   delivery never depends on how well a rollout compresses.
-- Published policy weights use the same approach; the 2.7MB model archive fits
-  under the same limit.
+- Published policy weights use the same approach, under the same limit; see
+  ADR 0004.
 
 ## Reasoning
 

@@ -13,6 +13,7 @@ MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 class BrokerConfig:
     bootstrap_servers: str
     rollout_topic: str = "rollouts"
+    policy_topic: str = "policy"
     learner_group: str = "learner"
     replication_factor: int = 1
 
