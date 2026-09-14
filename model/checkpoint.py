@@ -19,10 +19,14 @@ APPLIED_ROLLOUT_WINDOW = 10_000
 
 
 class TrainingProgress:
-    """Steps trained so far, and the IDs of the most recently applied rollouts."""
+    """Steps trained so far, the policy version, and the IDs of the most recently applied rollouts.
 
-    def __init__(self, steps=0, applied_rollout_ids=()):
+    The policy version is the number of updates applied, so it rises by one with each rollout recorded.
+    """
+
+    def __init__(self, steps=0, applied_rollout_ids=(), policy_version=0):
         self.steps = steps
+        self.policy_version = policy_version
         self._applied = deque(applied_rollout_ids, maxlen=APPLIED_ROLLOUT_WINDOW)
 
     def has_applied(self, rollout_id):
@@ -31,14 +35,19 @@ class TrainingProgress:
     def record(self, rollout_id, steps):
         self._applied.append(rollout_id)
         self.steps += steps
+        self.policy_version += 1
 
     def to_json(self):
-        return json.dumps({"steps": self.steps, "applied_rollout_ids": list(self._applied)})
+        return json.dumps({
+            "steps": self.steps,
+            "policy_version": self.policy_version,
+            "applied_rollout_ids": list(self._applied),
+        })
 
     @classmethod
     def from_json(cls, text):
         data = json.loads(text)
-        return cls(data["steps"], data["applied_rollout_ids"])
+        return cls(data["steps"], data["applied_rollout_ids"], data.get("policy_version", 0))
 
 
 def save_checkpoint(model, progress, path):

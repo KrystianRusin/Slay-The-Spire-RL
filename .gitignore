@@ -8,7 +8,8 @@ __pycache__/
 # Ignore venv directory
 venv/
 
-ppo_slay_the_spire.zip
+maskable_ppo_slay_the_spire.zip
+maskable_ppo_slay_the_spire.zip.partial
 performance_metrics.png
 performance_metrics Day 1.png
 .env

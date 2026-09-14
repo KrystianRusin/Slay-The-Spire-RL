@@ -83,9 +83,9 @@ The game is treated as an environment, where the agent observes the current game
     ```
 
    Tables are created automatically when an actor starts; you only need the
-   database itself to exist and the credentials to be valid. The rollout topic is
-   likewise created by whichever of the learner or an actor starts first, as
-   declared in `broker/topics.py`.
+   database itself to exist and the credentials to be valid. The rollout and
+   policy topics are likewise created by whichever of the learner or an actor
+   starts first, as declared in `broker/topics.py`.
 
    For a local single-node broker:
 
@@ -100,7 +100,11 @@ The game is treated as an environment, where the agent observes the current game
 Training runs as separate processes that share nothing but the Kafka broker:
 one learner, and one actor per game instance. Actors publish each completed
 rollout to the rollout topic, and the learner applies an update for each one as
-it arrives. Actors can be started or stopped at any time.
+it arrives. The learner publishes the weights from each update to the policy
+topic as a numbered version. An actor waits for the first version, and after
+each rollout switches to the newest one and logs how far behind the learner
+that rollout was. Actors can be started or stopped at any time; see
+`docs/adr/0004`.
 
 Ensure that *Slay the Spire* is running and that the Communication Mod is set to run middleman_process.py
 

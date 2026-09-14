@@ -56,3 +56,14 @@ def test_a_save_interrupted_partway_leaves_the_previous_checkpoint(tmp_path, mon
     _, restored = load_checkpoint(tmp_path / "policy", SlayTheSpireEnv({}), device="cpu")
     assert restored.steps == 2048
     assert not restored.has_applied("rollout-b")
+
+
+def test_the_policy_version_counts_updates_and_survives_a_restart(tmp_path):
+    progress = TrainingProgress()
+    progress.record("rollout-a", steps=2048)
+    progress.record("rollout-b", steps=2048)
+
+    save_checkpoint(make_model(), progress, tmp_path / "policy")
+    _, restored = load_checkpoint(tmp_path / "policy", SlayTheSpireEnv({}), device="cpu")
+
+    assert restored.policy_version == 2
