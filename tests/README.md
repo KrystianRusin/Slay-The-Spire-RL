@@ -39,14 +39,13 @@ Its README covers what each one contains and how to capture more by setting
 
 ## Concurrent writers against Postgres
 
-`test_concurrent_actors_each_record_their_own_games` runs several actor
-processes writing games at once. It always runs against SQLite; to run it
-against Postgres too, point `TEST_DATABASE_URL` at an empty scratch database.
-The test creates its tables there and drops them afterwards, and refuses to run
-if any of them already exist.
+The concurrency tests in `test_data_layer.py` and `test_game_registry.py`
+always run against SQLite. To run them against Postgres too, point
+`TEST_DATABASE_URL` at an empty scratch database. The tests create their tables
+there and drop them afterwards, and refuse to run if any of them already exist.
 
 ```bash
-TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/slay_the_spire_test pytest tests/test_data_layer.py
+TEST_DATABASE_URL=postgresql://postgres:changeme@localhost:5432/slay_the_spire_test pytest tests/test_data_layer.py tests/test_game_registry.py
 ```
 
 ## Kafka

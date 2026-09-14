@@ -30,6 +30,17 @@ class CardPicked(Base):
 
     game = relationship('Game', back_populates='card_picks')
 
+class GameInstance(Base):
+    """A running game's middleman: where it listens, and which actor, if any, has claimed the game."""
+    __tablename__ = 'game_instances'
+
+    game_id = Column(String, primary_key=True)
+    host = Column(String, nullable=False)
+    port = Column(Integer, nullable=False)
+    middleman_seen_at = Column(DateTime, nullable=False)
+    actor_id = Column(String)
+    actor_seen_at = Column(DateTime)
+
 class CardPerformance(Base):
     __tablename__ = 'card_performance'
 
