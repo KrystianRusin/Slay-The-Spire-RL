@@ -138,6 +138,41 @@ The middleman reads these optional settings from the environment or `.env`:
 
 The learner saves its progress after every update to a file named maskable_ppo_slay_the_spire.zip, and resumes from it when restarted. A rollout the learner was working on when it stopped is delivered to it again; see `docs/adr/0003`.
 
+### Monitoring
+
+The learner and every actor serve Prometheus metrics, and log JSON lines to
+stderr. See `docs/adr/0006`.
+
+- The learner serves `http://localhost:8000/metrics`. Set `LEARNER_METRICS_PORT` to change the port.
+- Each actor serves `http://localhost:<8100 + env id>/metrics`. Pass `--metrics-port` to change it.
+- `LOG_LEVEL` sets the log level, `INFO` by default. `DEBUG` adds every game state received and every reward component awarded.
+
+Bring up Prometheus and the Grafana dashboard:
+
+```bash
+docker compose -f monitoring/docker-compose.yml up -d
+```
+
+The dashboard opens at `http://localhost:3000`, and Prometheus at
+`http://localhost:9090`. Prometheus scrapes the learner and actors 0 to 3 on
+the host; add a target to `monitoring/prometheus.yml` for each further actor.
+
+The dashboard shows:
+
+- consumer lag, per partition and in total
+- rollout age, and learner updates per hour
+- the learner's policy version, each actor's version, and each actor's policy lag
+- actor throughput and rollouts published
+- each actor's episode reward, the mean of its last 10 episodes, and episode length
+
+To see backpressure, slow the learner down with a pause before each update,
+while actors keep publishing. The consumer lag panel climbs, and so does
+rollout age:
+
+```bash
+python learner.py --update-delay 600
+```
+
 ## Customization
 
 ### Training Hyperparameters
@@ -195,7 +230,7 @@ The model is saved after a specified number of episodes during training. By defa
 
 ## Performance Metrics
 
-- The agent's performance is tracked by logging the total rewards and episode lengths. These metrics are plotted periodically during training and saved as `performance_metrics.png`.
+- Episode rewards, episode lengths and the rest of the training metrics are exported to Prometheus and shown on the Grafana dashboard; see [Monitoring](#monitoring).
 - Other data is stored in the database and stores each game instance with a start and end time, class chosen, floor reached and how many bosses the agent was able to defeat.
 - Cards that the agent chooses during card selection is also stored along with the other choices the agent had in order to develop a card ranking based on the agents preferences
 - Card performance statistics are also recorded which include how many times the card is picked, the average floor the agent reaches with that card in its deck, the cards winrate and how many games the card was featured in

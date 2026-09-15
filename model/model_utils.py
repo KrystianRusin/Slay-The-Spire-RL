@@ -1,6 +1,9 @@
-import torch as th
-import time
+import logging
 from typing import NamedTuple
+
+import torch as th
+
+logger = logging.getLogger(__name__)
 
 
 class PPOLoss(NamedTuple):
@@ -47,11 +50,7 @@ def update_model(model, rollout_buffer, current_step, total_steps):
                 th.nn.utils.clip_grad_norm_(model.policy.parameters(), model.max_grad_norm)
                 model.policy.optimizer.step()
 
-            except Exception as e:
-                with open("model_update_log.txt", "a") as log_file:
-                    log_file.write(f"Error during model update at {time.strftime('%Y-%m-%d %H:%M:%S')}: {str(e)}\n")
-                print(f"Error during model update: {e}")
+            except Exception:
+                logger.exception("Error during model update in epoch %d", epoch)
 
-        with open("model_update_log.txt", "a") as log_file:
-            log_file.write(f"Model was updated at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        print("Model Updated and logged.")
+    logger.info("Model updated over %d epochs", n_epochs)

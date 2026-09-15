@@ -26,10 +26,11 @@ and committed too, so one bad message cannot stop the learner. The exception
 is a rollout from a newer schema version than the learner knows: the learner
 stops without committing it, because the learner is the one out of date.
 
-**Lag is accepted and measured, not throttled.** After every commit the
-learner measures consumer lag, meaning the rollouts on its partitions not yet
-committed. It logs the lag, and warns when it reaches 5. Actors never slow
-down or drop rollouts because of lag.
+**Lag is accepted and measured, not throttled.** The learner measures
+consumer lag, meaning the rollouts on the topic its group has not committed,
+exports it as a metric, and warns while it is 5 or more. How it is measured is
+recorded in docs/adr/0006. Actors never slow down or drop rollouts because of
+lag.
 
 ## Reasoning
 

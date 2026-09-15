@@ -25,6 +25,6 @@ def update_boss_count(game_id):
         return
 
     if result.rowcount:
-        print("Boss count updated in the database.")
+        logger.info("Recorded a boss defeated in game %s", game_id)
     else:
         logger.warning("Game %s not found; boss count not updated", game_id)

@@ -47,7 +47,7 @@ def track_card_pick(game_state, action, game_id):
         logger.exception("Could not record the pick of %s in game %s", chosen_card["name"], game_id)
         return
 
-    print(f"Card '{chosen_card['name']}' picked and added to the database with options {other_options}.")
+    logger.info("Recorded the pick of %s over %s in game %s", chosen_card["name"], other_options, game_id)
 
 
 def track_card_performance(game_state, floor_reached, won):

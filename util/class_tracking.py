@@ -26,5 +26,5 @@ def record_game_start(action):
         logger.exception("Could not record the start of a %s game", class_name)
         return None
 
-    print(f"Game started with class '{class_name}' and added to the database with game_id: {game_id}.")
+    logger.info("Recorded the start of game %s as %s", game_id, class_name)
     return game_id

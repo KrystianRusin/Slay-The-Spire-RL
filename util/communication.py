@@ -1,4 +1,5 @@
 import json
+import logging
 import socket
 import struct
 import time
@@ -10,6 +11,8 @@ RECV_SIZE = 4096
 MAX_MESSAGE_BYTES = 16 * 1024 * 1024
 SOCKET_TIMEOUT_SECONDS = 10
 MAX_RETRIES = 10
+
+logger = logging.getLogger(__name__)
 
 
 class FramedConnection:
@@ -156,18 +159,18 @@ class GameConnection:
         while self._connection is None:
             self._address = self._locate()
             if self._address is None:
-                print("The game is not registered as running")
+                logger.warning("The game is not registered as running")
                 self._retry()
                 continue
             try:
                 self._connection = FramedConnection(self._connect(self._address))
             except OSError as error:
-                print(f"Could not connect to the game at {self._address}: {error}")
+                logger.warning("Could not connect to the game at %s: %s", self._address, error)
                 self._retry()
         return self._connection
 
     def _drop(self, error):
-        print(f"Lost the connection to the game at {self._address}: {error}")
+        logger.warning("Lost the connection to the game at %s: %s", self._address, error)
         self.close()
         self._retry()
 
@@ -188,13 +191,11 @@ def handle_end_of_episode(connection):
     for command in commands:
         try:
             connection.send(command)
-            print(f"Sent '{command}' command")
             connection.receive_json()
-            print(f"Game state received after '{command}'")
-
+            logger.debug("Game state received after %s", command)
         except json.JSONDecodeError as e:
-            print(f"Failed to decode JSON after '{command}': {e}")
+            logger.warning("Failed to decode the game state after %s: %s", command, e)
             return
         except ConnectionError as e:
-            print(f"Connection error after '{command}': {e}")
+            logger.warning("Connection error after %s: %s", command, e)
             return

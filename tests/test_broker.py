@@ -14,7 +14,7 @@ from confluent_kafka.admin import AdminClient, ConfigResource, NewTopic, Resourc
 
 from broker.config import BrokerConfig
 from broker.policy import PolicyPublisher, PolicySubscription
-from broker.rollouts import RolloutConsumer, RolloutPublisher
+from broker.rollouts import ConsumerLagProbe, RolloutConsumer, RolloutPublisher
 from broker.topics import POLICY_PARTITIONS, POLICY_TOPIC_CONFIG, ROLLOUT_PARTITIONS, ROLLOUT_TOPIC_CONFIG, ensure_topics
 from learner import train
 from model.policy_codec import encode_policy
@@ -215,14 +215,31 @@ def test_a_rollout_left_uncommitted_is_delivered_to_the_next_learner_in_the_grou
         assert next(iter(deliveries)).value == b"second"
 
 
-def test_lag_counts_the_rollouts_not_yet_committed(broker):
+def test_lag_counts_the_rollouts_the_learner_group_has_not_committed(broker):
     ensure_topics(broker)
-    publish(broker, b"first", b"second", b"third")
+
+    with closing(ConsumerLagProbe(broker)) as probe:
+        assert sorted(probe.measure()) == list(range(ROLLOUT_PARTITIONS))
+        assert sum(probe.measure().values()) == 0
+
+        publish(broker, b"first", b"second", b"third")
+        assert sum(probe.measure().values()) == 3
+
+        with closing(RolloutConsumer(broker)) as deliveries:
+            next(iter(deliveries)).commit()
+            assert sum(probe.measure().values()) == 2
+
+
+def test_a_delivery_carries_when_its_rollout_was_published(broker):
+    ensure_topics(broker)
+    before = time.time()
+    publish(broker, b"rollout")
+    after = time.time()
 
     with closing(RolloutConsumer(broker)) as deliveries:
-        next(iter(deliveries)).commit()
+        published_at = next(iter(deliveries)).published_at
 
-        assert deliveries.lag() == 2
+    assert before - 1 <= published_at <= after + 1
 
 
 def test_the_learner_keeps_training_after_an_actor_is_killed(broker, observation_space, tmp_path, monkeypatch):

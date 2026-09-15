@@ -51,8 +51,7 @@ def test_value_loss_is_the_mean_squared_error_per_step(model, batch):
     assert th.allclose(value_loss, expected, atol=1e-5)
 
 
-def test_an_update_changes_the_policy_weights(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_an_update_changes_the_policy_weights(caplog):
     model = make_model()
     before = [parameter.detach().clone() for parameter in model.policy.parameters()]
 
@@ -60,4 +59,4 @@ def test_an_update_changes_the_policy_weights(tmp_path, monkeypatch):
 
     after = list(model.policy.parameters())
     assert any(not th.equal(old, new) for old, new in zip(before, after))
-    assert "Error" not in (tmp_path / "model_update_log.txt").read_text()
+    assert not [record for record in caplog.records if record.levelname == "ERROR"]
