@@ -39,6 +39,6 @@ def update_game_stats_on_game_over(game_state, game_id, total_reward):
         return
 
     if game:
-        print(f"Game {game_id} stats updated in the database.")
+        logger.info("Recorded the end of game %s", game_id)
     else:
         logger.warning("Game %s not found; stats not updated", game_id)

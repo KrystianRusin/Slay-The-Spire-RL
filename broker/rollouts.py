@@ -3,15 +3,13 @@
 import logging
 from functools import partial
 
-from confluent_kafka import Consumer, KafkaException
+from confluent_kafka import TIMESTAMP_NOT_AVAILABLE, Consumer, KafkaException, TopicPartition
 
 from broker.config import MAX_MESSAGE_BYTES
 from broker.publisher import Publisher
 
 POLL_SECONDS = 1.0
 TIMEOUT_SECONDS = 30.0
-# Each rollout waiting is one more update the policy moves on before that rollout is used; see docs/adr/0003.
-LAG_WARNING_ROLLOUTS = 5
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +22,15 @@ class RolloutPublisher(Publisher):
 
 
 class Delivery:
-    """One rollout read from the topic. Its offset is committed only when commit is called."""
+    """One rollout read from the topic. Its offset is committed only when commit is called.
 
-    def __init__(self, value, commit):
+    published_at is when the actor published it, in seconds since the epoch, or None if the broker did not record it.
+    """
+
+    def __init__(self, value, commit, published_at=None):
         self.value = value
         self.commit = commit
+        self.published_at = published_at
 
 
 class RolloutConsumer:
@@ -62,22 +64,11 @@ class RolloutConsumer:
                 continue
             error = message.error()
             if error is None:
-                yield Delivery(message.value(), partial(self._commit, message))
+                yield Delivery(message.value(), partial(self._commit, message), _published_at(message))
             elif error.fatal():
                 raise KafkaException(error)
             else:
                 logger.warning("Rollout consumer: %s", error)
-
-    def lag(self):
-        """Rollouts on this member's partitions that are on the topic but not yet committed."""
-        assignment = self._consumer.assignment()
-        if not assignment:
-            return 0
-        total = 0
-        for partition in self._consumer.committed(assignment, timeout=TIMEOUT_SECONDS):
-            low, high = self._consumer.get_watermark_offsets(partition, timeout=TIMEOUT_SECONDS, cached=False)
-            total += high - (partition.offset if partition.offset >= 0 else low)
-        return total
 
     def close(self):
         self._consumer.close()
@@ -90,19 +81,49 @@ class RolloutConsumer:
                 "Could not commit offset %d on partition %d, so that rollout may be delivered again: %s",
                 message.offset(), message.partition(), error,
             )
-            return
-        self._report_lag()
 
-    def _report_lag(self):
-        try:
-            lag = self.lag()
-        except KafkaException as error:
-            logger.warning("Could not measure consumer lag: %s", error)
-            return
-        if lag >= LAG_WARNING_ROLLOUTS:
-            logger.warning("Learner is %d rollouts behind the actors; the rollouts it trains on are getting stale", lag)
-        else:
-            logger.info("Consumer lag: %d rollouts", lag)
+
+class ConsumerLagProbe:
+    """Measures the learner group's lag on the rollout topic from outside the group.
+
+    It never joins the group or commits, so it can run on another thread while
+    the learner consumes.
+    """
+
+    def __init__(self, config):
+        self._topic = config.rollout_topic
+        self._consumer = Consumer({
+            "bootstrap.servers": config.bootstrap_servers,
+            "group.id": config.learner_group,
+            "enable.auto.commit": False,
+        })
+
+    def measure(self):
+        """Rollouts on the topic the learner group has not committed, by partition number."""
+        metadata = self._consumer.list_topics(self._topic, timeout=TIMEOUT_SECONDS)
+        partitions = [TopicPartition(self._topic, number) for number in metadata.topics[self._topic].partitions]
+        lag = {}
+        for partition in self._consumer.committed(partitions, timeout=TIMEOUT_SECONDS):
+            low, high = self._consumer.get_watermark_offsets(partition, timeout=TIMEOUT_SECONDS, cached=False)
+            lag[partition.partition] = partition_lag(partition.offset, low, high)
+        return lag
+
+    def close(self):
+        self._consumer.close()
+
+
+def partition_lag(committed, low, high):
+    """Messages on a partition after the committed offset, given its low and high watermarks.
+
+    committed is negative when nothing has been committed. Messages already
+    removed by retention are not counted.
+    """
+    return high - max(committed, low)
+
+
+def _published_at(message):
+    kind, milliseconds = message.timestamp()
+    return None if kind == TIMESTAMP_NOT_AVAILABLE else milliseconds / 1000
 
 
 def _partition_numbers(partitions):

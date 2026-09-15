@@ -4,13 +4,15 @@ import struct
 
 import pytest
 import torch as th
+from confluent_kafka import KafkaException
 from sb3_contrib.ppo_mask import MaskablePPO
 
 import learner
-from learner import train
+from learner import check_lag, train
 from model.checkpoint import load_checkpoint
 from model.policy_codec import decode_policy
 from model.rollout_codec import UnsupportedSchemaVersion, encode_rollout
+from observability.metrics import LearnerMetrics
 from slay_the_spire_env import SlayTheSpireEnv
 
 from tests.rollouts import fill, make_buffer
@@ -25,8 +27,9 @@ class Killed(BaseException):
 class FakeDelivery:
     """A rollout as the consumer hands it over, recording whether its offset was committed."""
 
-    def __init__(self, value, on_commit=None):
+    def __init__(self, value, on_commit=None, published_at=None):
         self.value = value
+        self.published_at = published_at
         self.committed = False
         self._on_commit = on_commit
 
@@ -47,12 +50,6 @@ class FakePublisher:
 
     def versions(self):
         return [policy.version for policy in self.published]
-
-
-@pytest.fixture(autouse=True)
-def in_scratch_directory(tmp_path, monkeypatch):
-    """update_model appends to a log file in the working directory."""
-    monkeypatch.chdir(tmp_path)
 
 
 def make_model():
@@ -218,3 +215,67 @@ def test_rollouts_that_are_skipped_publish_no_new_version(tmp_path):
           progress=progress, save_path=save_path, publisher=publisher)
 
     assert publisher.versions() == [1]
+
+
+def test_each_update_records_the_age_of_its_rollout_and_the_new_policy_version(tmp_path):
+    model = make_model()
+    metrics = LearnerMetrics(clock=lambda: 1000.0)
+    deliveries = [FakeDelivery(encoded_rollout(model), published_at=published_at) for published_at in (940.0, 990.0)]
+
+    train(model, deliveries, total_steps=2 * ROLLOUT_STEPS, save_path=tmp_path / "policy", metrics=metrics)
+
+    assert metrics.registry.get_sample_value("sts_learner_rollout_age_seconds_count") == 2
+    assert metrics.registry.get_sample_value("sts_learner_rollout_age_seconds_sum") == 70.0
+    assert metrics.registry.get_sample_value("sts_learner_last_rollout_age_seconds") == 10.0
+    assert metrics.registry.get_sample_value("sts_learner_updates_total") == 2
+    assert metrics.registry.get_sample_value("sts_learner_policy_version") == 2
+    assert metrics.registry.get_sample_value("sts_learner_steps") == 2 * ROLLOUT_STEPS
+
+
+def test_skipped_rollouts_are_counted_by_why_they_were_skipped(tmp_path):
+    model = make_model()
+    save_path = tmp_path / "policy"
+    applied = encoded_rollout(model, "rollout-a")
+    train(model, [FakeDelivery(applied)], total_steps=10 * ROLLOUT_STEPS, save_path=save_path)
+
+    model, progress = restart(save_path)
+    metrics = LearnerMetrics()
+    train(model, [FakeDelivery(applied), FakeDelivery(b"not a rollout")], total_steps=10 * ROLLOUT_STEPS,
+          progress=progress, save_path=save_path, metrics=metrics)
+
+    sample = metrics.registry.get_sample_value
+    assert sample("sts_learner_rollouts_skipped_total", {"reason": "already_applied"}) == 1
+    assert sample("sts_learner_rollouts_skipped_total", {"reason": "undecodable"}) == 1
+    assert sample("sts_learner_updates_total") == 0
+    assert sample("sts_learner_policy_version") == 1
+
+
+class FakeLagProbe:
+    """Returns each measurement in turn, raising those that are exceptions."""
+
+    def __init__(self, *measurements):
+        self._measurements = iter(measurements)
+
+    def measure(self):
+        measurement = next(self._measurements)
+        if isinstance(measurement, Exception):
+            raise measurement
+        return measurement
+
+
+def test_consumer_lag_is_exported_by_partition_warned_about_once_rollouts_pile_up_and_dropped_when_unmeasurable(caplog):
+    metrics = LearnerMetrics()
+    probe = FakeLagProbe({0: 1, 1: 2}, {0: 3, 1: 4}, KafkaException("broker unreachable"))
+    sample = metrics.registry.get_sample_value
+
+    check_lag(probe, metrics)
+    assert sample("sts_learner_consumer_lag_rollouts", {"partition": "1"}) == 2
+    assert not [record for record in caplog.records if record.levelname == "WARNING"]
+
+    check_lag(probe, metrics)
+    assert sample("sts_learner_consumer_lag_rollouts", {"partition": "0"}) == 3
+    assert "7 rollouts behind" in caplog.text
+
+    check_lag(probe, metrics)
+    assert "Could not measure consumer lag" in caplog.text
+    assert sample("sts_learner_consumer_lag_rollouts", {"partition": "1"}) is None

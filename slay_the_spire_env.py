@@ -1,5 +1,6 @@
 import gymnasium as gym
 import copy
+import logging
 import numpy as np
 from gymnasium import spaces
 from util.vocabularies import screen_type_vocab
@@ -15,6 +16,8 @@ from observations.relic_observations import get_relic_observation
 from observations.extra_info_observations import get_extra_info_observation
 from observations.deck_observations import get_deck_observation
 from observations.screen_observations import get_screen_observation
+
+logger = logging.getLogger(__name__)
 
 # After any of these, RETURN would step straight back to the screen just left.
 LOOP_BACK_AFTER = {"proceed", "choose", "return"}
@@ -303,45 +306,45 @@ class SlayTheSpireEnv(gym.Env):
         if len(previous_combat_state) > 0:
             for prev_monster, curr_monster in zip(previous_monsters, current_monsters):
                 if curr_monster.get('current_hp', 0) < prev_monster.get('current_hp', 0):
-                    print("Monster Damage Reward ", taken.text)
+                    logger.debug("Monster Damage Reward: %s", taken.text)
                     max_hp = curr_monster.get('max_hp', 1)
                     health_diff = prev_monster.get('current_hp', 0) - curr_monster.get('current_hp', 0)
                     percentage_damage = health_diff / max_hp
                     reward += percentage_damage * 10
                     if curr_monster.get('current_hp', 0) == 0 and prev_monster.get('current_hp', 0) > 0:
-                        print("Monster Kill Reward ", taken.text)
+                        logger.debug("Monster Kill Reward: %s", taken.text)
                         reward += 20
 
         if previous_game_state.get("screen_type") == "NONE" and current_game_state.get("screen_type") == "COMBAT_REWARD":
-            print("Combat Ended Reward ")
+            logger.debug("Combat Ended Reward")
             reward += 40
 
         # Penalty for taking damage
         previous_hp = previous_game_state.get('current_hp', 0)
         current_hp = current_game_state.get('current_hp', 0)
         if current_hp < previous_hp:
-            print("HP Damage Penalty ", taken.text)
+            logger.debug("HP Damage Penalty: %s", taken.text)
             reward -= (previous_hp - current_hp) * 3
                 
         # Check for floor progression
         if current_game_state.get('floor', 0) > previous_game_state.get('floor', 0):
-            print("Floor Climbing Reward ", taken.text)
+            logger.debug("Floor Climbing Reward: %s", taken.text)
             reward += 10
                 
         # Additional reward for potion use
         if taken.command == "potion" and taken.use:
-            print("Potion Use Reward ", taken.text)
+            logger.debug("Potion Use Reward: %s", taken.text)
             reward += 10
 
         if taken.command == "potion" and not taken.use:
-            print("Potion Discard Penalty ", taken.text)
+            logger.debug("Potion Discard Penalty: %s", taken.text)
             reward -= 10
 
         # Reward for acquiring a relic
         previous_relics = previous_game_state.get('relics', [])
         current_relics = current_game_state.get('relics', [])
         if len(current_relics) > len(previous_relics):
-            print("Relic taken reward ", taken.text)
+            logger.debug("Relic taken reward: %s", taken.text)
             reward += 50  # Adjust the reward value as you see fit
 
         # Reward/Penalty for gold changes
@@ -349,10 +352,10 @@ class SlayTheSpireEnv(gym.Env):
         current_gold = current_game_state.get('gold', 0)
         gold_difference = current_gold - previous_gold
         if gold_difference > 0:
-            print("Gold Gained Reward ", taken.text)
+            logger.debug("Gold Gained Reward: %s", taken.text)
             reward += (gold_difference / 10)  # 1 point for each 10 gold gained
         elif gold_difference < 0:
-            print("Gold Lost Penalty ", taken.text)
+            logger.debug("Gold Lost Penalty: %s", taken.text)
             reward += (gold_difference * 0.05)  # -0.05 points for each gold lost
 
         # Reward for adding a card to the deck
@@ -362,20 +365,20 @@ class SlayTheSpireEnv(gym.Env):
             new_card = current_deck[-1]  # Assuming the new card is added at the end
             rarity = new_card.get('rarity', 'COMMON').upper()  # Default to 'COMMON' if rarity is not found
             if rarity == 'COMMON':
-                print("Common Card Reward ", taken.text)
+                logger.debug("Common Card Reward: %s", taken.text)
                 reward += 3
             elif rarity == 'UNCOMMON':
-                print("Uncommon Card Reward", taken.text)
+                logger.debug("Uncommon Card Reward: %s", taken.text)
                 reward += 4.3
             elif rarity == 'RARE':
-                print("Rare Card Reward ", taken.text)
+                logger.debug("Rare Card Reward: %s", taken.text)
                 reward += 10
 
         # Reward for removing CURSE cards from the deck
         previous_curse_count = sum(1 for card in previous_deck if card.get('rarity', '').upper() == 'CURSE')
         current_curse_count = sum(1 for card in current_deck if card.get('rarity', '').upper() == 'CURSE')
         if current_curse_count < previous_curse_count:
-            print("Curse Removal Reward ", taken.text)
+            logger.debug("Curse Removal Reward: %s", taken.text)
             reward += 15
         
         # Small penalty per action to encourage efficiency

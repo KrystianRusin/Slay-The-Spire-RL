@@ -1,40 +1,39 @@
+import logging
+
 import torch as th
-from collections import deque
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
 from model.policy_follower import PolicyFollower
 from model.rollout_codec import encode_rollout
 from util.communication import handle_end_of_episode
-from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
 import json
 from util.game_over_tracking import update_game_stats_on_game_over
 from util.card_tracking import track_card_performance
+
+logger = logging.getLogger(__name__)
 
 def hand_off_rollout(rollout_buffer, publisher):
     """Publish a completed rollout for the learner, encoded, and clear the buffer for the next one."""
     publisher.publish(encode_rollout(rollout_buffer))
     rollout_buffer.reset()
 
-def run_environment(env_id, connection, publisher, policy_source, n_steps=2048):
+def run_environment(connection, publisher, policy_source, metrics, n_steps=2048):
     """
     Function to run a single agent in a separate environment, playing the game behind connection.
 
     The policy follows the newest weights read from policy_source, switching only between rollouts.
+    Progress is recorded on metrics, an ActorMetrics.
     """
-    episode_rewards = []
-    episode_lengths = []
-    reward_queue = deque(maxlen=10)
-    highest_reward = float('-inf')
-
     # Initialize the environment
     env = SlayTheSpireEnv({})
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
-    model = MaskablePPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=device)
+    model = MaskablePPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=0, device=device)
     follower = PolicyFollower(model.policy, policy_source)
     follower.wait_for_first()
-    print(f"Environment {env_id}: Running policy version {follower.version}")
+    metrics.running_policy(follower.version)
+    logger.info("Running policy version %d", follower.version)
 
     rollout_buffer = CustomRolloutBuffer(
         buffer_size=n_steps,
@@ -60,9 +59,9 @@ def run_environment(env_id, connection, publisher, policy_source, n_steps=2048):
             try:
                 game_state = connection.receive_json()
             except json.JSONDecodeError as e:
-                print(f"Failed to decode JSON in environment {env_id}: {e}")
+                logger.warning("Failed to decode a game state: %s", e)
                 continue
-            print(f"Environment {env_id}: Game State Received")
+            logger.debug("Game state received")
 
             env.update_game_state(game_state)
             obs = env.flatten_observation(game_state)
@@ -79,7 +78,7 @@ def run_environment(env_id, connection, publisher, policy_source, n_steps=2048):
             try:
                 connection.send(chosen_command)
             except ConnectionError as e:
-                print(f"Environment {env_id}: {e}; not recording the action")
+                logger.warning("%s; not recording the action", e)
                 continue
 
             game_id = process_game_state(game_state, chosen_command, game_id)
@@ -87,6 +86,7 @@ def run_environment(env_id, connection, publisher, policy_source, n_steps=2048):
             new_obs, reward, done, info = env.step(action)
             total_reward += reward
             episode_length += 1
+            metrics.step()
 
             new_obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in new_obs.items()}
             action_tensor = th.tensor(action, dtype=th.long).to(device)
@@ -111,10 +111,12 @@ def run_environment(env_id, connection, publisher, policy_source, n_steps=2048):
 
                 collected_under = follower.version
                 switched = follower.update()
-                print(f"Environment {env_id}: Published a rollout collected under policy version {collected_under}; "
-                      f"the learner is at version {follower.learner_version}")
+                metrics.rollout_published(collected_under, follower.learner_version)
+                logger.info("Published a rollout collected under policy version %d; the learner is at version %d",
+                            collected_under, follower.learner_version)
                 if switched:
-                    print(f"Environment {env_id}: Running policy version {follower.version}")
+                    metrics.running_policy(follower.version)
+                    logger.info("Running policy version %d", follower.version)
             if done:
                 screen_state = game_state['game_state'].get('screen_state', {})
                 victory = screen_state.get('victory', False)
@@ -124,15 +126,8 @@ def run_environment(env_id, connection, publisher, policy_source, n_steps=2048):
                 update_game_stats_on_game_over(game_state, game_id, total_reward)
                 track_card_performance(game_state['game_state'], floor_reached, victory)
 
-        episode_rewards.append(total_reward)
-        episode_lengths.append(episode_length)
-        reward_queue.append(total_reward)
-        highest_reward = max(highest_reward, total_reward)
-        rolling_avg = sum(reward_queue) / len(reward_queue) if reward_queue else 0
-
-        if episode % 10 == 0:
-            plot_performance_metrics(episode_rewards, episode_lengths, [rolling_avg], highest_reward)
-
+        metrics.episode_finished(total_reward, episode_length)
+        logger.info("Episode %d finished with reward %.1f after %d steps", episode, total_reward, episode_length)
         episode += 1
   
         handle_end_of_episode(connection)
