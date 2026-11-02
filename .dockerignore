@@ -1,0 +1,11 @@
+# Keep the build context to what images actually COPY.
+.git
+venv
+run
+tickets
+tests
+observations
+*.zip
+*.png
+*.db
+__pycache__

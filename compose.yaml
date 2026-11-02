@@ -1,0 +1,21 @@
+# Local stack. Phase 1 / M1: one headless game running the random bot.
+#
+#   docker compose up --build game
+#   tail -f run/game/random_bot.log     # steps, steps/s, floor
+#   docker stats                        # CPU / RAM
+#
+# STS_GAME_DIR points at your Slay the Spire install (must contain jre-linux/
+# and mods/ with BaseMod + CommunicationMod). It is mounted read-only.
+services:
+  game:
+    build:
+      context: .
+      dockerfile: docker/game/Dockerfile
+    image: sts-game:dev
+    init: true                          # tini as PID 1, so Xvfb/bot get reaped and signals work
+    user: "${UID:-1000}:${GID:-1000}"   # files in run/ stay owned by you, not root
+    volumes:
+      - ${STS_GAME_DIR:-${HOME}/SlayTheSpire}:/game:ro
+      - ./run/game:/instance
+    environment:
+      RANDOM_BOT_TRACE: ${RANDOM_BOT_TRACE:-}

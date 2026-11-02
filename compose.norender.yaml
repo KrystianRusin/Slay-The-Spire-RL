@@ -1,0 +1,13 @@
+# Optional overlay: load the NoRender mod (built outside this repo) so the game
+# runs its logic without drawing. ~40x less CPU and ~half the RAM per game.
+#
+#   docker compose -f compose.yaml -f compose.norender.yaml up --build game
+#
+# NORENDER_JAR defaults to where ~/sts-instances builds it.
+services:
+  game:
+    volumes:
+      - ${NORENDER_JAR:-${HOME}/sts-instances/norender/NoRender.jar}:/extra-mods/NoRender.jar:ro
+    environment:
+      STS_MODS: basemod,CommunicationMod,norender
+      NORENDER_EVERY: ${NORENDER_EVERY:-0}   # draw every Nth frame (0 = never), for screenshots

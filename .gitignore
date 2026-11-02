@@ -17,3 +17,9 @@ slay_the_spire.db
 
 # Test artefacts
 .pytest_cache/
+
+# Local work tickets (not committed)
+tickets/
+
+# Container run state (instance saves, logs)
+run/
