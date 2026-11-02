@@ -66,7 +66,7 @@ def read_lines_with_timeout(fd, timeout):
 def main():
     log = open("random_bot.log", "a", buffering=1)
     # RANDOM_BOT_TRACE=1 logs every message and reply as JSON lines (epoch-seconds
-    # timestamps), for debugging stalls and for bots/trace_latency.py.
+    # timestamps), for debugging stalls and timing.
     trace_file = open("random_bot_trace.jsonl", "a", buffering=1) if os.environ.get("RANDOM_BOT_TRACE") else None
 
     def trace(**event):
