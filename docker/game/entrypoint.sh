@@ -37,6 +37,26 @@ if [ ! -d saves ]; then
   cp -a "$GAME/betaPreferences" betaPreferences
   cp -a "$GAME/betaPreferences" preferences
 fi
+# Gameplay settings for bot play, applied to this instance's copy only:
+#   Fast Mode on           shorter built-in action durations
+#   Particles/shake off    purely visual effects, and some of them have timers the game waits on
+#   Upload Data off        don't send every bot run's stats to Mega Crit
+# STS_KEEP_SETTINGS=1 leaves the copied settings exactly as they were.
+if [ "${STS_KEEP_SETTINGS:-0}" != 1 ]; then
+  python3 - betaPreferences/STSGameplaySettings preferences/STSGameplaySettings <<'PY'
+import json, sys
+for path in sys.argv[1:]:
+    try:
+        with open(path) as f:
+            settings = json.load(f)
+    except FileNotFoundError:
+        continue
+    settings.update({"Fast Mode": "true", "Particle Effects": "false",
+                     "Screen Shake": "false", "Upload Data": "false"})
+    with open(path, "w") as f:
+        json.dump(settings, f, indent=2)
+PY
+fi
 # width, height, fps, fullscreen, windowed-fullscreen, vsync
 printf '%s\n%s\n%s\nfalse\nfalse\nfalse\n' "$W" "$H" "$FPS" > info.displayconfig
 cat > home/.config/ModTheSpire/CommunicationMod/config.properties <<EOF
