@@ -11,3 +11,4 @@ services:
     environment:
       STS_MODS: basemod,CommunicationMod,norender
       NORENDER_EVERY: ${NORENDER_EVERY:-0}   # draw every Nth frame (0 = never), for screenshots
+      NORENDER_SPEED: ${NORENDER_SPEED:-10}  # game clock multiplier; 10x measured stable (1 = real time)
