@@ -4,7 +4,7 @@
 # talks to it over stdin/stdout.
 #
 # Env (defaults in brackets):
-#   STS_BOT_CMD   command CommunicationMod runs [python3 /opt/sts/bots/random_bot.py]
+#   STS_BOT_CMD   command CommunicationMod runs [python3 /opt/sts/app/bots/random_bot.py]
 #   STS_ACTOR_CMD optional process to run next to the game (the RL actor). When
 #                 set, the game runs in the background and this becomes the main
 #                 process, so the container stops when the actor does.
@@ -16,7 +16,7 @@ set -euo pipefail
 
 GAME=${STS_GAME_DIR:-/game}
 INST=${STS_INSTANCE_DIR:-/instance}
-BOT_CMD=${STS_BOT_CMD:-python3 /opt/sts/bots/random_bot.py}
+BOT_CMD=${STS_BOT_CMD:-python3 /opt/sts/app/bots/random_bot.py}
 W=${STS_W:-640}; H=${STS_H:-360}; FPS=${STS_FPS:-24}
 JAVA=$GAME/jre-linux/bin/java
 # Lean JVM: live heap is ~125 MB, and default GC/JIT thread counts are sized for the whole host CPU.

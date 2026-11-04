@@ -28,7 +28,6 @@ COPY requirements.txt /opt/sts/app/requirements.txt
 RUN pip install --no-cache-dir torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir -r /opt/sts/app/requirements.txt
 
-COPY bots/ /opt/sts/bots/
 COPY . /opt/sts/app/
 COPY docker/game/entrypoint.sh /opt/sts/entrypoint.sh
 
