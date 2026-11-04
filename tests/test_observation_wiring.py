@@ -191,3 +191,16 @@ def test_the_reward_needs_no_previous_state():
     env.previous_action = env.action_ids["END"]
 
     assert env.calculate_reward() == 0
+
+
+def test_map_screen_encodes_a_current_node_without_a_symbol():
+    # Seen live at the start of an act: current_node has x and y but no symbol.
+    payload = copy.deepcopy(load_payload("map_screen"))
+    screen_state = payload["game_state"]["screen_state"]
+    screen_state["current_node"] = {"x": 0, "y": -1}
+    for node in screen_state.get("next_nodes", []):
+        node.pop("symbol", None)
+
+    observation = SlayTheSpireEnv({}).flatten_observation(payload)
+
+    assert np.isfinite(observation["screen"]).all()

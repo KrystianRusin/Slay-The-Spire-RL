@@ -95,29 +95,25 @@ def test_a_connection_closed_mid_message_raises():
         connection.receive()
 
 
-class ScriptedStdin:
-    """Stands in for the game's stdout: yields lines, then ends the relay."""
+def start_relay(monkeypatch, game_lines):
+    """Run the middleman relay on a thread against a scripted game.
 
-    def __init__(self, lines):
-        self.lines = list(lines)
-
-    def readline(self):
-        if not self.lines:
-            raise EOFError("script exhausted")
-        return self.lines.pop(0)
+    game_lines stands in for what the game prints: JSON lines, or None for a
+    stretch of silence long enough to trip the stall watchdog. Returns the
+    actor's end of the socket and the relay thread.
+    """
+    monkeypatch.setattr(middleman_process, "log_message", lambda message, verbose=False: None)
+    middleman_end, actor_end = socket.socketpair()
+    actor_end.settimeout(10)
+    relay = threading.Thread(target=middleman_process.handle_gym_client,
+                             args=(middleman_end, iter(game_lines)))
+    relay.start()
+    return FramedConnection(actor_end), actor_end, relay
 
 
 def test_middleman_relays_states_and_commands_over_a_real_socket(monkeypatch, capsys):
     states = [{"available_commands": ["play"]}, {"available_commands": ["proceed"]}]
-    monkeypatch.setattr(middleman_process.sys, "stdin", ScriptedStdin(json.dumps(s) + "\n" for s in states))
-    monkeypatch.setattr(middleman_process, "log_message", lambda message: None)
-
-    middleman_end, actor_end = socket.socketpair()
-    actor = FramedConnection(actor_end)
-    actor_end.settimeout(10)
-
-    relay = threading.Thread(target=middleman_process.handle_gym_client, args=(middleman_end,))
-    relay.start()
+    actor, actor_end, relay = start_relay(monkeypatch, [json.dumps(s) for s in states])
     try:
         assert actor.receive_json() == states[0]
         actor.send("PLAY 1 0")
@@ -129,3 +125,38 @@ def test_middleman_relays_states_and_commands_over_a_real_socket(monkeypatch, ca
 
     assert not relay.is_alive()
     assert capsys.readouterr().out.splitlines() == ["PLAY 1 0", "PROCEED"]
+
+
+def test_middleman_asks_a_silent_game_for_its_state_and_relays_the_reply(monkeypatch, capsys):
+    stuck = {"available_commands": ["choose"], "ready_for_command": True}
+    resent = {"available_commands": ["choose"], "ready_for_command": False}
+    actor, actor_end, relay = start_relay(monkeypatch, [json.dumps(stuck), None, json.dumps(resent)])
+    try:
+        assert actor.receive_json() == stuck
+        actor.send("CHOOSE 0")
+        # The game dropped CHOOSE 0 and went quiet; the reply to `state` comes through as a normal state.
+        assert actor.receive_json() == resent
+        actor.send("CHOOSE 0")
+        relay.join(timeout=10)
+    finally:
+        actor_end.close()
+
+    assert capsys.readouterr().out.splitlines() == ["CHOOSE 0", "state", "CHOOSE 0"]
+
+
+def test_middleman_never_forwards_game_errors(monkeypatch, capsys):
+    before = {"available_commands": ["play", "end"]}
+    after = {"available_commands": ["end"]}
+    actor, actor_end, relay = start_relay(
+        monkeypatch, [json.dumps(before), json.dumps({"error": "Invalid command"}), json.dumps(after)])
+    try:
+        assert actor.receive_json() == before
+        actor.send("PLAY 1")
+        # The error is handled inside: the actor's next message is the resent state.
+        assert actor.receive_json() == after
+        actor.send("END")
+        relay.join(timeout=10)
+    finally:
+        actor_end.close()
+
+    assert capsys.readouterr().out.splitlines() == ["PLAY 1", "state", "END"]

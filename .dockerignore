@@ -4,8 +4,11 @@ venv
 run
 tickets
 tests
-observations
 *.zip
 *.png
 *.db
 __pycache__
+.env
+*.txt
+!requirements*.txt
+compose*.yaml

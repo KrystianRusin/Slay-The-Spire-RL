@@ -2,6 +2,8 @@ import copy
 import torch as th
 import socket
 import os
+import sys
+import time
 from collections import deque
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
@@ -13,13 +15,35 @@ import json
 from util.game_over_tracking import update_game_stats_on_game_over
 from util.card_tracking import track_card_performance
 
+# Set to 0 to skip the Postgres stat tracking and the performance plot, e.g. in a
+# container with no database. Both default to on, as before.
+TRACK_DB = os.environ.get("STS_TRACK_DB", "1") != "0"
+PLOT = os.environ.get("STS_PLOT", "1") != "0"
+
+
+def connect_with_retry(host, port, timeout=180):
+    """Connect to the middleman, waiting for it to come up.
+
+    The middleman only exists once the game has booted and CommunicationMod has
+    started it, which takes a while, so a single attempt is not enough.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            return socket.create_connection((host, port), timeout=10)
+        except OSError as e:
+            if time.monotonic() > deadline:
+                raise ConnectionError(f"Middleman at {host}:{port} not reachable after {timeout}s") from e
+            time.sleep(2)
+
+
 def hand_off_rollout(rollout_buffer, experience_queue):
     """Queue a completed rollout for the learner and clear the buffer for the next one."""
     # Queue.put pickles on a background thread, so it must get a copy the reset cannot reach.
     experience_queue.put(copy.deepcopy(rollout_buffer))
     rollout_buffer.reset()
 
-def run_environment(env_id, port, experience_queue, n_steps=2048):
+def run_environment(env_id, port, experience_queue, n_steps=2048, host="localhost"):
     """
     Function to run a single agent in a separate environment.
     """
@@ -28,10 +52,12 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
     reward_queue = deque(maxlen=10)
     highest_reward = float('-inf')
     
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.settimeout(10)
-    client_socket.connect(("localhost", port))
+    client_socket = connect_with_retry(host, port)
+    # Block as long as the game needs: the middleman resolves stalls itself, and
+    # a dead middleman closes the socket, which raises ConnectionError below.
+    client_socket.settimeout(None)
     connection = FramedConnection(client_socket)
+    print(f"Environment {env_id}: connected to middleman at {host}:{port}", flush=True)
 
     # Initialize the environment
     env = SlayTheSpireEnv({})
@@ -68,9 +94,10 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
                 print(f"Failed to decode JSON in environment {env_id}: {e}")
                 continue
             except ConnectionError as e:
-                print(f"Connection error in environment {env_id}: {e}")
-                break
-            print(f"Environment {env_id}: Game State Received")
+                # The game or middleman is gone; there is nothing to recover here.
+                print(f"Connection error in environment {env_id}: {e}", flush=True)
+                client_socket.close()
+                sys.exit(1)
 
             env.update_game_state(game_state)
             obs = env.flatten_observation(game_state)
@@ -82,11 +109,12 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
             action_mask_numpy = action_mask_tensor.cpu().numpy()
 
             action, _states = model.predict(obs_numpy, action_masks=action_mask_numpy)
-            action = int(action)
+            action = int(action.item())  # predict returns shape (1,) for a batch of one
             chosen_command = env.actions[action].text
             connection.send(chosen_command)
 
-            game_id = process_game_state(game_state, chosen_command, game_id)
+            if TRACK_DB:
+                game_id = process_game_state(game_state, chosen_command, game_id)
 
             new_obs, reward, done, info = env.step(action)
             total_reward += reward
@@ -123,9 +151,15 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
                 victory = screen_state.get('victory', False)
                 floor_reached = game_state['game_state'].get('floor', 0)
 
+                character = game_state['game_state'].get('class', '?')
+                print(f"Environment {env_id}: episode {episode} done: {character} "
+                      f"floor={floor_reached} victory={victory} reward={total_reward:.1f} "
+                      f"steps={episode_length}", flush=True)
+
                 # Update the game stats and card performance before sending any commands
-                update_game_stats_on_game_over(game_state, game_id, total_reward)
-                track_card_performance(game_state['game_state'], floor_reached, victory)
+                if TRACK_DB:
+                    update_game_stats_on_game_over(game_state, game_id, total_reward)
+                    track_card_performance(game_state['game_state'], floor_reached, victory)
 
         episode_rewards.append(total_reward)
         episode_lengths.append(episode_length)
@@ -133,7 +167,7 @@ def run_environment(env_id, port, experience_queue, n_steps=2048):
         highest_reward = max(highest_reward, total_reward)
         rolling_avg = sum(reward_queue) / len(reward_queue) if reward_queue else 0
 
-        if episode % 10 == 0:
+        if PLOT and episode % 10 == 0:
             plot_performance_metrics(episode_rewards, episode_lengths, [rolling_avg], highest_reward)
 
         episode += 1

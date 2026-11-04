@@ -5,6 +5,9 @@
 #
 # Env (defaults in brackets):
 #   STS_BOT_CMD   command CommunicationMod runs [python3 /opt/sts/bots/random_bot.py]
+#   STS_ACTOR_CMD optional process to run next to the game (the RL actor). When
+#                 set, the game runs in the background and this becomes the main
+#                 process, so the container stops when the actor does.
 #   STS_W/STS_H   resolution [640x360]      STS_FPS   frame cap [24]
 #   STS_HEAP      Java max heap [512m]      JAVA_OPTS extra JVM flags
 #   STS_MODS      mod ids passed to --mods [basemod,CommunicationMod]
@@ -74,5 +77,13 @@ for _ in $(seq 50); do [ -e /tmp/.X11-unix/X99 ] && break; sleep 0.1; done
 
 echo "Starting Slay the Spire (bot: $BOT_CMD)"
 export HOME=$INST/home DISPLAY=$DISP
-exec "$JAVA" -Xmx"${STS_HEAP:-512m}" $JVM_TUNING ${JAVA_OPTS:-} -Duser.home="$HOME" \
-  -jar ModTheSpire.jar --skip-launcher --skip-intro --mods "${STS_MODS:-basemod,CommunicationMod}"
+GAME_CMD=("$JAVA" -Xmx"${STS_HEAP:-512m}" $JVM_TUNING ${JAVA_OPTS:-} -Duser.home="$HOME"
+  -jar ModTheSpire.jar --skip-launcher --skip-intro --mods "${STS_MODS:-basemod,CommunicationMod}")
+
+if [ -z "${STS_ACTOR_CMD:-}" ]; then
+  exec "${GAME_CMD[@]}"
+fi
+# Game output goes to a file so the container log is the actor's.
+"${GAME_CMD[@]}" > "$INST/game.log" 2>&1 &
+echo "Game log: $INST/game.log. Starting actor: $STS_ACTOR_CMD"
+exec $STS_ACTOR_CMD

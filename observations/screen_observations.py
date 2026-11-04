@@ -97,14 +97,16 @@ def handle_rest_screen(screen_state, screen_type_token):
 
 def handle_map_screen(screen_state, screen_type_token):
     first_node_chosen = float(screen_state.get("first_node_chosen", 0.0))
-    current_node = screen_state.get("current_node", {"symbol": "?", "x": 0, "y": 0})
+    # current_node can be missing, or present without a symbol (seen at the start
+    # of an act, before the first room is picked), so default each field.
+    current_node = screen_state.get("current_node") or {}
     next_nodes = screen_state.get("next_nodes", [])
 
     # Encode current node
     current_node_observation = [
-        map_symbol_vocab.id_of(current_node["symbol"]),
-        float(current_node["x"]),
-        float(current_node["y"])
+        map_symbol_vocab.id_of(current_node.get("symbol", "?")),
+        float(current_node.get("x", 0)),
+        float(current_node.get("y", 0))
     ]
 
     # Encode next nodes (maximum of 3 for example)
@@ -112,9 +114,9 @@ def handle_map_screen(screen_state, screen_type_token):
     next_nodes_observation = []
     for node in next_nodes[:max_next_nodes]:
         node_observation = [
-            map_symbol_vocab.id_of(node["symbol"]),
-            float(node["x"]),
-            float(node["y"])
+            map_symbol_vocab.id_of(node.get("symbol", "?")),
+            float(node.get("x", 0)),
+            float(node.get("y", 0))
         ]
         next_nodes_observation.append(node_observation)
     while len(next_nodes_observation) < max_next_nodes:

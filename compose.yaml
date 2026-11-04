@@ -1,21 +1,42 @@
-# Local stack. Phase 1 / M1: one headless game running the random bot.
+# Local stack.
 #
-#   docker compose up --build game
-#   tail -f run/game/random_bot.log     # steps, steps/s, floor
-#   docker stats                        # CPU / RAM
+#   game   headless game + random bot (Phase 1 / M1)
+#            docker compose up --build game
+#            tail -f run/game/random_bot.log      # steps, steps/s, floor
+#   actor  headless game + middleman + RL actor with a local policy (M2)
+#            docker compose up --build actor      # logs: one line per episode / rollout
+#            tail -f run/actor/game.log           # the game's own log
 #
+# Add -f compose.norender.yaml after -f compose.yaml to run without drawing at 10x.
 # STS_GAME_DIR points at your Slay the Spire install (must contain jre-linux/
 # and mods/ with BaseMod + CommunicationMod). It is mounted read-only.
+
+x-sts-instance: &sts-instance
+  build:
+    context: .
+    dockerfile: docker/game/Dockerfile
+  image: sts-game:dev
+  init: true                          # tini as PID 1, so child processes get reaped and signals work
+  user: "${UID:-1000}:${GID:-1000}"   # files in run/ stay owned by you, not root
+
 services:
   game:
-    build:
-      context: .
-      dockerfile: docker/game/Dockerfile
-    image: sts-game:dev
-    init: true                          # tini as PID 1, so Xvfb/bot get reaped and signals work
-    user: "${UID:-1000}:${GID:-1000}"   # files in run/ stay owned by you, not root
+    <<: *sts-instance
     volumes:
       - ${STS_GAME_DIR:-${HOME}/SlayTheSpire}:/game:ro
       - ./run/game:/instance
     environment:
       RANDOM_BOT_TRACE: ${RANDOM_BOT_TRACE:-}
+
+  actor:
+    <<: *sts-instance
+    volumes:
+      - ${STS_GAME_DIR:-${HOME}/SlayTheSpire}:/game:ro
+      - ./run/actor:/instance
+    environment:
+      STS_BOT_CMD: python3 /opt/sts/app/middleman_process.py
+      STS_ACTOR_CMD: python3 /opt/sts/app/run_local_actor.py
+      STS_MIDDLEMAN_PORT: "9999"   # one game per container, so a fixed port is safe
+      STS_TRACK_DB: "0"            # no Postgres in this stack
+      STS_PLOT: "0"
+      STS_FPS: "120"               # measured best speed/CPU trade-off (tickets/game-speed)
