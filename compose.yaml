@@ -3,8 +3,10 @@
 #   game   headless game + random bot (Phase 1 / M1)
 #            docker compose up --build game
 #            tail -f run/game/random_bot.log      # steps, steps/s, floor
-#   actor  headless game + middleman + RL actor with a local policy (M2)
-#            docker compose up --build actor      # logs: one line per episode / rollout
+#   actor + learner
+#          headless game + middleman + RL actor, sending rollouts to the learner
+#          over gRPC (M3; the learner doesn't train yet)
+#            docker compose up --build learner actor
 #            tail -f run/actor/game.log           # the game's own log
 #
 # Add -f compose.norender.yaml after -f compose.yaml to run without drawing at 10x.
@@ -35,8 +37,18 @@ services:
       - ./run/actor:/instance
     environment:
       STS_BOT_CMD: python3 /opt/sts/app/middleman_process.py
-      STS_ACTOR_CMD: python3 /opt/sts/app/run_local_actor.py
+      STS_ACTOR_CMD: python3 /opt/sts/app/run_actor.py
+      LEARNER_ADDR: learner:50051  # compose gives each service a hostname = its name
       STS_MIDDLEMAN_PORT: "9999"   # one game per container, so a fixed port is safe
       STS_TRACK_DB: "0"            # no Postgres in this stack
       STS_PLOT: "0"
       STS_FPS: "120"               # measured best speed/CPU trade-off (tickets/game-speed)
+    depends_on:
+      - learner
+
+  learner:
+    <<: *sts-instance
+    # Same image, but no game: skip the game-setup entrypoint and run the learner.
+    entrypoint: ["python3", "/opt/sts/app/learner_server.py"]
+    environment:
+      LEARNER_PORT: "50051"

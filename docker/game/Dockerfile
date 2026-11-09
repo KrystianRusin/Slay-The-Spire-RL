@@ -29,6 +29,8 @@ RUN pip install --no-cache-dir torch==2.11.0 --index-url https://download.pytorc
     && pip install --no-cache-dir -r /opt/sts/app/requirements.txt
 
 COPY . /opt/sts/app/
+# Generate the gRPC code from the contract. Not committed, so it can't drift from the .proto.
+RUN cd /opt/sts/app && python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. rpc/learner.proto
 COPY docker/game/entrypoint.sh /opt/sts/entrypoint.sh
 
 # Per-run state (saves, prefs, logs) lives here; compose mounts a host dir over it.

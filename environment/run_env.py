@@ -5,9 +5,9 @@ import os
 import sys
 import time
 from collections import deque
-from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
+from model.policy import TrainingConfig, make_model
 from util.communication import FramedConnection, handle_end_of_episode
 from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
@@ -43,10 +43,18 @@ def hand_off_rollout(rollout_buffer, experience_queue):
     experience_queue.put(copy.deepcopy(rollout_buffer))
     rollout_buffer.reset()
 
-def run_environment(env_id, port, experience_queue, n_steps=2048, host="localhost"):
+def run_environment(env_id, port, experience_queue, host="localhost",
+                    config=None, initial_state_dict=None):
     """
     Function to run a single agent in a separate environment.
+
+    config is the TrainingConfig to build the policy from (the learner's, sent
+    with its weights); defaults to model/policy.py. initial_state_dict, if
+    given, replaces the policy's random initial weights, so the actor plays with
+    the learner's network.
     """
+    config = config or TrainingConfig()
+    n_steps = config.n_steps
     episode_rewards = []
     episode_lengths = []
     reward_queue = deque(maxlen=10)
@@ -62,10 +70,9 @@ def run_environment(env_id, port, experience_queue, n_steps=2048, host="localhos
     # Initialize the environment
     env = SlayTheSpireEnv({})
     device = th.device("cuda" if th.cuda.is_available() else "cpu")
-    model = MaskablePPO("MultiInputPolicy", env, ent_coef=0.03, gamma=0.97, learning_rate=0.0003, clip_range=0.3, verbose=1, device=device)
-    
-    reload_interval = 100
-    reload_counter = 0
+    model = make_model(config, env=env, device=device)
+    if initial_state_dict is not None:
+        model.policy.load_state_dict(initial_state_dict)
 
     rollout_buffer = CustomRolloutBuffer(
         buffer_size=n_steps,
@@ -140,12 +147,6 @@ def run_environment(env_id, port, experience_queue, n_steps=2048, host="localhos
             if len(rollout_buffer) >= n_steps:
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
                 hand_off_rollout(rollout_buffer, experience_queue)
-
-                reload_counter += 1
-                if reload_counter % reload_interval == 0:
-                    if os.path.exists("maskable_ppo_slay_the_spire.zip"):
-                        model = MaskablePPO.load("maskable_ppo_slay_the_spire", env=env)
-                        print(f"Environment {env_id}: Reloaded updated model weights.")
             if done:
                 screen_state = game_state['game_state'].get('screen_state', {})
                 victory = screen_state.get('victory', False)

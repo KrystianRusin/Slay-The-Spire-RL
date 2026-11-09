@@ -1,0 +1,70 @@
+// The contract between actors and the learner.
+//
+// Actors play the game and send experience up; the learner trains and sends
+// weights down. Python code is generated from this file at image build time
+// (see docker/game/Dockerfile); the Go services in Phase 2 generate from it too.
+syntax = "proto3";
+
+package sts.v1;
+
+service Learner {
+  // The current policy. An actor calls this at startup (and, from M4, after
+  // every rollout) so it plays with the learner's exact network.
+  rpc GetWeights(GetWeightsRequest) returns (Weights);
+
+  // One finished rollout: n_steps of experience made with policy_version.
+  rpc SubmitRollout(Rollout) returns (SubmitAck);
+}
+
+// One numpy array: raw bytes in C order, plus what's needed to rebuild it.
+message Tensor {
+  repeated int64 shape = 1;
+  string dtype = 2;  // numpy dtype name, e.g. "float32", "bool"
+  bytes data = 3;
+}
+
+message GetWeightsRequest {
+  string actor_id = 1;
+}
+
+message Weights {
+  int64 version = 1;
+  bytes state_dict = 2;   // torch.save() of the policy's state_dict
+  PolicyConfig config = 3; // how to build the network these weights fit, and the PPO settings
+}
+
+// Mirrors model/policy.py TrainingConfig. The learner owns it; actors build from it.
+message PolicyConfig {
+  int32 n_steps = 1;
+  double gamma = 2;
+  double gae_lambda = 3;
+  double learning_rate = 4;
+  double ent_coef = 5;
+  double clip_range = 6;
+  int32 n_epochs = 7;
+  int32 batch_size = 8;
+  repeated int32 policy_layers = 9;
+  repeated int32 value_layers = 10;
+}
+
+// Every Tensor has n_steps as its first dimension.
+message Rollout {
+  string actor_id = 1;
+  int64 policy_version = 2;  // the Weights.version the actor played with
+  int32 n_steps = 3;
+
+  map<string, Tensor> observations = 4;  // one entry per observation key (deck, hand, map, ...)
+  Tensor action_masks = 5;               // legal actions at each step; not recorded yet (M4)
+  Tensor actions = 6;
+  Tensor log_probs = 7;                  // log P_old(action) under policy_version
+  Tensor values = 8;
+  Tensor rewards = 9;
+  Tensor dones = 10;
+  Tensor advantages = 11;
+  Tensor returns = 12;
+}
+
+message SubmitAck {
+  bool accepted = 1;
+  string reason = 2;  // why it was rejected, if it was
+}
