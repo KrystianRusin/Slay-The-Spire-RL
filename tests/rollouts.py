@@ -1,5 +1,6 @@
 """Build rollout buffers filled the way the actor loop fills them."""
 
+import numpy as np
 import torch as th
 from gymnasium import spaces
 
@@ -21,7 +22,15 @@ def make_buffer(observation_space, size=8):
     )
 
 
-def add_step(buffer, reward=0.0, done=False, value=0.0, log_prob=0.0, action=0):
+def mask_for(buffer, action, legal=(0, 1, 2, 3, 4)):
+    """A mask with the actions in legal, plus action itself, allowed."""
+    mask = np.zeros(buffer.action_space.n, dtype=bool)
+    mask[list(legal)] = True
+    mask[action] = True
+    return mask
+
+
+def add_step(buffer, reward=0.0, done=False, value=0.0, log_prob=0.0, action=0, action_mask=None):
     """Add one transition with the tensor shapes run_env produces."""
     obs = {
         key: th.rand(1, *space.shape)
@@ -34,6 +43,7 @@ def add_step(buffer, reward=0.0, done=False, value=0.0, log_prob=0.0, action=0):
         done,
         th.tensor([[value]]),
         th.tensor([log_prob]),
+        mask_for(buffer, action) if action_mask is None else action_mask,
     )
 
 

@@ -35,7 +35,8 @@ def test_a_rollout_survives_the_round_trip_exactly(rollout):
         assert decoded["observations"][key].dtype == array.dtype
     for field, attribute in BUFFER_FIELDS.items():
         np.testing.assert_array_equal(decoded[field], getattr(rollout, attribute))
-    assert decoded["action_masks"] is None  # not recorded until M4
+    np.testing.assert_array_equal(decoded["action_masks"], rollout.action_masks)
+    assert decoded["action_masks"].dtype == bool
 
 
 def test_only_the_filled_steps_are_sent(observation_space):
@@ -144,6 +145,19 @@ def test_submitting_before_fetching_weights_is_an_error(learner, rollout):
 
     with pytest.raises(RuntimeError, match="get_weights"):
         client.put(rollout)
+
+
+def test_the_learner_rejects_a_rollout_without_action_masks(learner, rollout):
+    service, client = learner
+    client.get_weights()
+    message = rollout_to_proto(rollout, "actor-test", 0)
+    message.ClearField("action_masks")
+
+    ack = client.stub.SubmitRollout(message)
+
+    assert not ack.accepted
+    assert "action masks" in ack.reason
+    assert service.accepted == 0
 
 
 def test_the_learner_rejects_a_malformed_rollout(learner, rollout):

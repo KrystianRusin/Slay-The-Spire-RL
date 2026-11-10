@@ -1,4 +1,5 @@
 import numpy as np
+import torch as th
 from stable_baselines3.common.buffers import RolloutBuffer
 
 
@@ -6,8 +7,9 @@ class CustomRolloutBuffer(RolloutBuffer):
     """Single-environment rollout buffer for dict observations.
 
     Every per-step array is one-dimensional of buffer length; each observation
-    component is stored at its own space shape. The base constructor sizes all
-    of them by calling reset.
+    component is stored at its own space shape, and each step's action mask (True
+    where the action was legal) as one row. The base constructor sizes all of
+    them by calling reset.
     """
 
     def reset(self):
@@ -20,11 +22,13 @@ class CustomRolloutBuffer(RolloutBuffer):
         self.advantages = np.zeros((self.buffer_size,), dtype=np.float32)
         self.old_log_prob = np.zeros((self.buffer_size,), dtype=np.float32)
         self.values = np.zeros((self.buffer_size,), dtype=np.float32)
+        self.action_masks = np.zeros((self.buffer_size, self.action_space.n), dtype=bool)
         self.pos = 0
         self.full = False
 
-    def add(self, obs, action, reward, done, value, log_prob):
-        """Add one transition. done marks whether this transition ended the episode."""
+    def add(self, obs, action, reward, done, value, log_prob, action_mask):
+        """Add one transition. done marks whether this transition ended the episode;
+        action_mask is the legal actions log_prob was computed over."""
         idx = self.pos
 
         for key, space in self.observation_space.spaces.items():
@@ -35,6 +39,7 @@ class CustomRolloutBuffer(RolloutBuffer):
         self.dones[idx] = done
         self.old_log_prob[idx] = log_prob.detach().cpu().item()
         self.values[idx] = value.detach().cpu().item()
+        self.action_masks[idx] = np.asarray(action_mask, dtype=bool).reshape(-1)
 
         self.pos += 1
         if self.pos == self.buffer_size:
@@ -57,6 +62,7 @@ class CustomRolloutBuffer(RolloutBuffer):
                 "log_probs": self.to_torch(self.old_log_prob[batch_indices]),
                 "advantages": self.to_torch(self.advantages[batch_indices]),
                 "returns": self.to_torch(self.returns[batch_indices]),
+                "action_masks": th.as_tensor(self.action_masks[batch_indices], device=self.device),
             }
 
     def compute_returns_and_advantage(self, last_values, dones):

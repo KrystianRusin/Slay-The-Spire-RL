@@ -35,6 +35,7 @@ def _filled_buffer():
             False,
             th.tensor(step + 0.5),
             th.tensor(-0.1),
+            np.ones(5, dtype=bool),
         )
     return buffer
 

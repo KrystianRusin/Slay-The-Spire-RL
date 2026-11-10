@@ -54,7 +54,7 @@ message Rollout {
   int32 n_steps = 3;
 
   map<string, Tensor> observations = 4;  // one entry per observation key (deck, hand, map, ...)
-  Tensor action_masks = 5;               // legal actions at each step; not recorded yet (M4)
+  Tensor action_masks = 5;               // legal actions at each step (bool), what log_probs were computed over
   Tensor actions = 6;
   Tensor log_probs = 7;                  // log P_old(action) under policy_version
   Tensor values = 8;

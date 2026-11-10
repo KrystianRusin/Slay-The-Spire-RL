@@ -44,6 +44,9 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
             rollout = rollout_from_proto(request)
         except ValueError as e:
             return self._reject(request, f"malformed rollout: {e}")
+        if rollout["action_masks"] is None:
+            # log_probs are only meaningful with the masks they were computed over
+            return self._reject(request, "rollout has no action masks")
 
         with self._lock:
             if rollout["policy_version"] != self.version:
@@ -54,6 +57,7 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
                   f"version {rollout['policy_version']}, {rollout['n_steps']} steps, "
                   f"reward sum={rollout['rewards'].sum():.1f}, "
                   f"episodes ended={int(rollout['dones'].sum())}, "
+                  f"legal actions/step={rollout['action_masks'].sum(axis=1).mean():.1f}, "
                   f"{request.ByteSize() / 1e6:.1f} MB", flush=True)
         return pb.SubmitAck(accepted=True)
 

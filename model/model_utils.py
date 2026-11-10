@@ -11,9 +11,14 @@ class PPOLoss(NamedTuple):
 
 
 def ppo_loss(policy, batch, clip_range, ent_coef, vf_coef):
-    """Clipped PPO loss for one minibatch from CustomRolloutBuffer.get."""
+    """Clipped PPO loss for one minibatch from CustomRolloutBuffer.get.
+
+    log_prob and entropy come from the masked distribution, the one the actor
+    sampled from, so the ratio compares like with like.
+    """
     actions = batch["actions"].long().flatten()
-    values, log_prob, entropy = policy.evaluate_actions(batch["observations"], actions)
+    values, log_prob, entropy = policy.evaluate_actions(batch["observations"], actions,
+                                                        action_masks=batch["action_masks"])
     values = values.flatten()
 
     advantages = batch["advantages"]

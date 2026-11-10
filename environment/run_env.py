@@ -43,6 +43,21 @@ def hand_off_rollout(rollout_buffer, experience_queue):
     experience_queue.put(copy.deepcopy(rollout_buffer))
     rollout_buffer.reset()
 
+def act(model, obs_tensor, action_mask):
+    """Sample an action from the masked policy. Returns (action, value, log_prob).
+
+    log_prob is taken from the same masked distribution the action was drawn
+    from, which is what the learner recomputes for the PPO ratio.
+    """
+    mask = th.as_tensor(action_mask, dtype=th.bool, device=model.device).reshape(1, -1)
+    with th.no_grad():
+        distribution = model.policy.get_distribution(obs_tensor, action_masks=mask)
+        action = distribution.get_actions(deterministic=False)
+        log_prob = distribution.log_prob(action)
+        value = model.policy.predict_values(obs_tensor)
+    return int(action.item()), value, log_prob
+
+
 def run_environment(env_id, port, experience_queue, host="localhost",
                     config=None, initial_state_dict=None):
     """
@@ -111,12 +126,7 @@ def run_environment(env_id, port, experience_queue, host="localhost",
             obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in obs.items()}
 
             action_mask = env.get_valid_action_mask(game_state)
-            action_mask_tensor = th.tensor(action_mask, dtype=th.bool).unsqueeze(0).to(device)
-            obs_numpy = {key: value.cpu().numpy() for key, value in obs_tensor.items()}
-            action_mask_numpy = action_mask_tensor.cpu().numpy()
-
-            action, _states = model.predict(obs_numpy, action_masks=action_mask_numpy)
-            action = int(action.item())  # predict returns shape (1,) for a batch of one
+            action, values, log_prob = act(model, obs_tensor, action_mask)
             chosen_command = env.actions[action].text
             connection.send(chosen_command)
 
@@ -129,8 +139,6 @@ def run_environment(env_id, port, experience_queue, host="localhost",
 
             new_obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in new_obs.items()}
             action_tensor = th.tensor(action, dtype=th.long).to(device)
-            values, log_prob, entropy = model.policy.evaluate_actions(obs_tensor, action_tensor)
-            values = model.policy.predict_values(obs_tensor)
 
             rollout_buffer.add(
                 obs_tensor,
@@ -138,7 +146,8 @@ def run_environment(env_id, port, experience_queue, host="localhost",
                 reward,
                 done,
                 values,
-                log_prob
+                log_prob,
+                action_mask,
             )
 
             obs = new_obs

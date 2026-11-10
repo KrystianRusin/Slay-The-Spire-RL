@@ -52,10 +52,7 @@ def rollout_to_proto(buffer, actor_id, policy_version):
         message.observations[key].CopyFrom(array_to_tensor(array[:n]))
     for field, attribute in BUFFER_FIELDS.items():
         getattr(message, field).CopyFrom(array_to_tensor(getattr(buffer, attribute)[:n]))
-    # The buffer doesn't record masks yet (M4); the field stays unset until it does.
-    masks = getattr(buffer, "action_masks", None)
-    if masks is not None:
-        message.action_masks.CopyFrom(array_to_tensor(masks[:n]))
+    message.action_masks.CopyFrom(array_to_tensor(buffer.action_masks[:n]))
     return message
 
 
