@@ -2,7 +2,7 @@ from multiprocessing import Process, Queue
 from sb3_contrib.ppo_mask import MaskablePPO
 from slay_the_spire_env import SlayTheSpireEnv
 from environment.run_env import run_environment
-from model.model_utils import update_model
+from model.model_utils import train
 from db.session import init_db
 import torch as th
 
@@ -47,7 +47,7 @@ def main():
             experiences.append(experience_queue.get())
 
         for exp in experiences:
-            update_model(model, exp, current_step, total_steps)
+            train(model, exp, progress_remaining=1 - current_step / total_steps)
 
         model.save("maskable_ppo_slay_the_spire")
         current_step += n_steps * num_envs

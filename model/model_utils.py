@@ -1,6 +1,7 @@
-import torch as th
-import time
 from typing import NamedTuple
+
+import numpy as np
+import torch as th
 
 
 class PPOLoss(NamedTuple):
@@ -8,6 +9,19 @@ class PPOLoss(NamedTuple):
     policy: th.Tensor
     value: th.Tensor
     entropy: th.Tensor
+    ratio: th.Tensor
+
+
+class TrainStats(NamedTuple):
+    steps: int
+    policy_loss: float
+    value_loss: float
+    entropy_loss: float
+    approx_kl: float
+    # |new_prob / old_prob - 1| on the first minibatch, before any optimizer step.
+    # About 0 only if the learner sees what the actor saw: same weights, observations and masks.
+    first_ratio_error_mean: float
+    first_ratio_error_max: float
 
 
 def ppo_loss(policy, batch, clip_range, ent_coef, vf_coef):
@@ -33,30 +47,35 @@ def ppo_loss(policy, batch, clip_range, ent_coef, vf_coef):
     value_loss = th.nn.functional.mse_loss(batch["returns"], values)
     entropy_loss = -th.mean(entropy)
     total = policy_loss + ent_coef * entropy_loss + vf_coef * value_loss
-    return PPOLoss(total, policy_loss, value_loss, entropy_loss)
+    return PPOLoss(total, policy_loss, value_loss, entropy_loss, ratio)
 
 
-def update_model(model, rollout_buffer, current_step, total_steps):
-    n_epochs = 10
-    batch_size = 64
-    progress_remaining = 1 - (current_step / total_steps)
+def train(model, buffer, progress_remaining=1.0):
+    """One PPO update over buffer: n_epochs of shuffled minibatches.
+
+    Errors propagate, so a broken update can't pass for a working one.
+    Returns TrainStats; the losses and KL are averages over the last epoch.
+    """
     clip_range = model.clip_range(progress_remaining)
+    first_ratio = None
 
-    for epoch in range(n_epochs):
-        for rollout_data in rollout_buffer.get(batch_size):
-            try:
-                loss = ppo_loss(model.policy, rollout_data, clip_range, model.ent_coef, model.vf_coef)
+    for _ in range(model.n_epochs):
+        epoch = []
+        for batch in buffer.get(model.batch_size):
+            loss = ppo_loss(model.policy, batch, clip_range, model.ent_coef, model.vf_coef)
+            ratio = loss.ratio.detach()
+            if first_ratio is None:
+                first_ratio = ratio  # computed before any optimizer step
 
-                model.policy.optimizer.zero_grad()
-                loss.total.backward()
-                th.nn.utils.clip_grad_norm_(model.policy.parameters(), model.max_grad_norm)
-                model.policy.optimizer.step()
+            model.policy.optimizer.zero_grad()
+            loss.total.backward()
+            th.nn.utils.clip_grad_norm_(model.policy.parameters(), model.max_grad_norm)
+            model.policy.optimizer.step()
 
-            except Exception as e:
-                with open("model_update_log.txt", "a") as log_file:
-                    log_file.write(f"Error during model update at {time.strftime('%Y-%m-%d %H:%M:%S')}: {str(e)}\n")
-                print(f"Error during model update: {e}")
+            approx_kl = th.mean(ratio - 1 - th.log(ratio))
+            epoch.append([loss.policy.item(), loss.value.item(), loss.entropy.item(), approx_kl.item()])
 
-        with open("model_update_log.txt", "a") as log_file:
-            log_file.write(f"Model was updated at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        print("Model Updated and logged.")
+    policy_loss, value_loss, entropy_loss, approx_kl = np.mean(epoch, axis=0)
+    first_error = th.abs(first_ratio - 1)
+    return TrainStats(buffer.pos, float(policy_loss), float(value_loss), float(entropy_loss), float(approx_kl),
+                      first_error.mean().item(), first_error.max().item())

@@ -5,7 +5,7 @@
 #            tail -f run/game/random_bot.log      # steps, steps/s, floor
 #   actor + learner
 #          headless game + middleman + RL actor, sending rollouts to the learner
-#          over gRPC (M3; the learner doesn't train yet)
+#          over gRPC; the learner trains on them
 #            docker compose up --build learner actor
 #            tail -f run/actor/game.log           # the game's own log
 #
@@ -52,3 +52,5 @@ services:
     entrypoint: ["python3", "/opt/sts/app/learner_server.py"]
     environment:
       LEARNER_PORT: "50051"
+      LEARNER_NUM_ACTORS: ${LEARNER_NUM_ACTORS:-1}  # rollouts per training round
+      LEARNER_N_STEPS: ${LEARNER_N_STEPS:-}         # shorter rollouts for quick test runs

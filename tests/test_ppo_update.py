@@ -6,7 +6,7 @@ import pytest
 import torch as th
 from sb3_contrib.ppo_mask import MaskablePPO
 
-from model.model_utils import ppo_loss, update_model
+from model.model_utils import ppo_loss, train
 from slay_the_spire_env import SlayTheSpireEnv
 
 from tests.rollouts import fill, make_buffer
@@ -51,13 +51,21 @@ def test_value_loss_is_the_mean_squared_error_per_step(model, batch):
     assert th.allclose(value_loss, expected, atol=1e-5)
 
 
-def test_an_update_changes_the_policy_weights(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_an_update_changes_the_policy_weights():
     model = make_model()
     before = [parameter.detach().clone() for parameter in model.policy.parameters()]
 
-    update_model(model, fill(make_buffer(model.observation_space, size=64)), current_step=0, total_steps=100)
+    stats = train(model, fill(make_buffer(model.observation_space, size=64)))
 
     after = list(model.policy.parameters())
     assert any(not th.equal(old, new) for old, new in zip(before, after))
-    assert "Error" not in (tmp_path / "model_update_log.txt").read_text()
+    assert stats.steps == 64
+
+
+def test_a_failing_update_raises_instead_of_being_logged_and_skipped(monkeypatch):
+    model = make_model()
+    buffer = fill(make_buffer(model.observation_space, size=64))
+    monkeypatch.setattr(model.policy, "evaluate_actions", lambda *args, **kwargs: 1 / 0)
+
+    with pytest.raises(ZeroDivisionError):
+        train(model, buffer)
