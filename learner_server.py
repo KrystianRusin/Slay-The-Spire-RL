@@ -2,8 +2,8 @@
 
 Each round, it collects one rollout per actor for the current version. Once it
 has LEARNER_NUM_ACTORS of them, a background thread concatenates them, runs one
-PPO update, and publishes the next version. Actors don't follow new versions
-yet (M4c), so an actor's next rollout after an update is rejected as stale.
+PPO update, and publishes the next version. Actors wait for that version with a
+long poll (GetWeights with min_version) before playing their next rollout.
 
 Env: LEARNER_PORT [50051], LEARNER_NUM_ACTORS [1], LEARNER_N_STEPS [from TrainingConfig].
 """
@@ -24,6 +24,10 @@ from rpc import learner_pb2 as pb
 from rpc import learner_pb2_grpc
 from rpc.codec import (BUFFER_FIELDS, GRPC_OPTIONS, config_to_proto, encode_state_dict,
                        rollout_from_proto, state_dict_digest)
+
+# The longest GetWeights holds a call open waiting for min_version. Short enough
+# to stay well inside the client's call timeout; the client just asks again.
+LONG_POLL_SECONDS = 30
 
 
 def check_matches_model(rollout, model):
@@ -73,6 +77,8 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         self._config = config_to_proto(config)
         self._lock = threading.Lock()  # gRPC serves calls on a thread pool
         self._round_full = threading.Condition(self._lock)
+        self._new_version = threading.Condition(self._lock)
+        self.long_poll_seconds = LONG_POLL_SECONDS
         self._pool = {}  # actor_id -> its rollout for the current version
         self.accepted = 0
         self.rejected = 0
@@ -83,6 +89,11 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
 
     def GetWeights(self, request, context):
         with self._lock:
+            # Releases the lock while waiting, so rollouts and training carry on.
+            self._new_version.wait_for(lambda: self.version >= request.min_version,
+                                       timeout=self.long_poll_seconds)
+            if self.version < request.min_version:
+                return pb.Weights(version=self.version)  # not yet: no weights, ask again
             print(f"learner: actor {request.actor_id} fetched weights v{self.version}", flush=True)
             return pb.Weights(version=self.version, state_dict=self._weights, config=self._config)
 
@@ -156,6 +167,7 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
             self._pool = {}
             self.last_stats = stats
             version = self.version
+            self._new_version.notify_all()  # wake every actor waiting for this version
         print(f"learner: trained v{version - 1} -> v{version} on {stats.steps} steps from "
               f"{len(rollouts)} actor(s) in {time.monotonic() - started:.1f}s, "
               f"sha={state_dict_digest(self.policy.state_dict())}, "
@@ -167,7 +179,10 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
 
 def serve(service, port):
     """Start a gRPC server for service on port. Returns the server, already running."""
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=8), options=GRPC_OPTIONS)
+    # Every actor waiting for new weights holds a worker thread, so there must be
+    # spare ones for the SubmitRollout that completes the round.
+    workers = futures.ThreadPoolExecutor(max_workers=service.num_actors + 8)
+    server = grpc.server(workers, options=GRPC_OPTIONS)
     learner_pb2_grpc.add_LearnerServicer_to_server(service, server)
     bound = server.add_insecure_port(f"[::]:{port}")
     server.start()

@@ -1,7 +1,8 @@
 """Run one actor: play the game through the middleman and hand off rollouts.
 
-With LEARNER_ADDR set (Phase 1 / M3), the actor fetches its starting weights
-from the learner and submits each finished rollout to it over gRPC. Without it,
+With LEARNER_ADDR set, the actor fetches its starting weights from the learner,
+submits each finished rollout to it over gRPC, and then waits for the learner's
+next version before playing the next rollout. Without it,
 rollouts go to a stand-in that logs and drops them (M2), so the actor can be
 tested with no learner running.
 
@@ -41,6 +42,7 @@ def main():
     learner_address = os.environ.get("LEARNER_ADDR")
     config = TrainingConfig()
     initial_state_dict = None
+    next_weights = None
 
     if learner_address:
         # Imported here so the no-learner mode doesn't need the generated gRPC code.
@@ -51,6 +53,13 @@ def main():
         version, config, initial_state_dict = sink.get_weights()
         print(f"actor {actor_id}: loaded weights v{version} from {learner_address}, "
               f"sha={state_dict_digest(initial_state_dict)}, {config}", flush=True)
+
+        def next_weights():
+            started = time.monotonic()
+            state_dict = sink.next_weights()
+            print(f"actor {actor_id}: loaded weights v{sink.version}, "
+                  f"sha={state_dict_digest(state_dict)}, waited {time.monotonic() - started:.1f}s", flush=True)
+            return state_dict
     else:
         print(f"actor {actor_id}: no LEARNER_ADDR, rollouts are logged and dropped", flush=True)
         sink = LoggingSink()
@@ -61,6 +70,7 @@ def main():
         experience_queue=sink,
         config=config,
         initial_state_dict=initial_state_dict,
+        next_weights=next_weights,
     )
 
 

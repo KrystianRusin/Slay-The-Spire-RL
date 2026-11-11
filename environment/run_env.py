@@ -59,14 +59,15 @@ def act(model, obs_tensor, action_mask):
 
 
 def run_environment(env_id, port, experience_queue, host="localhost",
-                    config=None, initial_state_dict=None):
+                    config=None, initial_state_dict=None, next_weights=None):
     """
     Function to run a single agent in a separate environment.
 
     config is the TrainingConfig to build the policy from (the learner's, sent
     with its weights); defaults to model/policy.py. initial_state_dict, if
     given, replaces the policy's random initial weights, so the actor plays with
-    the learner's network.
+    the learner's network. next_weights, if given, is called after each rollout is
+    handed off and returns the state_dict to play the next one with.
     """
     config = config or TrainingConfig()
     n_steps = config.n_steps
@@ -156,6 +157,8 @@ def run_environment(env_id, port, experience_queue, host="localhost",
             if len(rollout_buffer) >= n_steps:
                 rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
                 hand_off_rollout(rollout_buffer, experience_queue)
+                if next_weights is not None:
+                    model.policy.load_state_dict(next_weights())
             if done:
                 screen_state = game_state['game_state'].get('screen_state', {})
                 victory = screen_state.get('victory', False)

@@ -43,6 +43,7 @@ services:
       STS_TRACK_DB: "0"            # no Postgres in this stack
       STS_PLOT: "0"
       STS_FPS: "120"               # measured best speed/CPU trade-off (tickets/game-speed)
+      MIDDLEMAN_VERBOSE: ${MIDDLEMAN_VERBOSE:-}  # 1 = log every state and command
     depends_on:
       - learner
 

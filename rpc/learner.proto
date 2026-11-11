@@ -8,8 +8,8 @@ syntax = "proto3";
 package sts.v1;
 
 service Learner {
-  // The current policy. An actor calls this at startup (and, from M4, after
-  // every rollout) so it plays with the learner's exact network.
+  // The current policy. An actor calls this at startup, and after every
+  // rollout with min_version set to wait for the next one (a long poll).
   rpc GetWeights(GetWeightsRequest) returns (Weights);
 
   // One finished rollout: n_steps of experience made with policy_version.
@@ -25,6 +25,10 @@ message Tensor {
 
 message GetWeightsRequest {
   string actor_id = 1;
+  // Wait (up to ~30 s) until the learner has at least this version. If it still
+  // doesn't, the reply has only the current version and no weights: ask again.
+  // 0 means don't wait.
+  int64 min_version = 2;
 }
 
 message Weights {

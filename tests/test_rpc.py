@@ -2,6 +2,7 @@
 
 Needs the code generated from rpc/learner.proto, which the image build creates.
 """
+import threading
 import time
 
 import numpy as np
@@ -334,3 +335,75 @@ def test_a_training_failure_takes_the_learner_down(start_learner, rollout, monke
     while not exits and time.monotonic() < deadline:
         time.sleep(0.01)
     assert exits == [1]
+
+
+def test_an_actor_waits_for_the_version_its_rollout_goes_into(start_learner, rollout):
+    service, connect = start_learner()
+    service.start_training()
+    client = connect("actor-a")
+    client.get_weights()
+    client.put(rollout)
+
+    state_dict = client.next_weights()  # returns once the update is published
+
+    assert client.version == 1
+    assert state_dict_digest(state_dict) == state_dict_digest(service.policy.state_dict())
+
+
+def test_waiting_outlasts_the_long_poll_by_asking_again(start_learner, rollout):
+    service, connect = start_learner(num_actors=2)
+    service.long_poll_seconds = 0.2
+    service.start_training()
+    first, second = connect("actor-a"), connect("actor-b")
+    first.get_weights()
+    second.get_weights()
+    first.put(rollout)
+    got = {}
+    waiter = threading.Thread(target=lambda: got.setdefault("weights", first.next_weights()))
+    waiter.start()
+
+    time.sleep(1)  # several long polls come back empty meanwhile
+    assert "weights" not in got
+    second.put(rollout)
+    waiter.join(timeout=30)
+
+    assert first.version == 1
+    assert "weights" in got
+
+
+def test_after_a_rejected_rollout_the_actor_takes_the_current_version(start_learner, rollout):
+    service, connect = start_learner()
+    client = connect("actor-a")
+    client.get_weights()
+    client.version = 7
+    assert not client.put(rollout).accepted
+
+    client.next_weights()  # doesn't wait for v8
+
+    assert client.version == 0
+
+
+def test_actors_waiting_for_weights_dont_starve_the_round_of_threads(start_learner, rollout):
+    """More actors waiting than gRPC's usual 8 worker threads, then the last one submits."""
+    actors = 12
+    service, connect = start_learner(num_actors=actors)
+    service.long_poll_seconds = 120  # so a starved server can't be rescued by a poll timing out
+    service.start_training()
+    clients = [connect(f"actor-{i}") for i in range(actors)]
+    for client in clients:
+        client.get_weights()
+    for client in clients[:-1]:
+        client.put(rollout)
+    waiters = [threading.Thread(target=client.next_weights) for client in clients[:-1]]
+    for waiter in waiters:
+        waiter.start()
+    time.sleep(0.5)  # every waiter is now holding a server thread inside GetWeights
+
+    last = rollout_to_proto(rollout, clients[-1].actor_id, 0)
+    ack = clients[-1].stub.SubmitRollout(last, timeout=10)  # needs a free server thread
+    for waiter in waiters:
+        waiter.join(timeout=30)
+
+    assert ack.accepted
+    assert [client.version for client in clients[:-1]] == [1] * (actors - 1)
+    assert service.last_stats.steps == 16 * actors
