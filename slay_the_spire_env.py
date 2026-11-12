@@ -73,7 +73,7 @@ def play_is_legal(action, combat_state, live_targets):
     if action.index >= len(hand):
         return False
     card = hand[action.index]
-    if not card["is_playable"]:
+    if not card.get("is_playable", False):
         return False
     if card["has_target"]:
         return action.target in live_targets

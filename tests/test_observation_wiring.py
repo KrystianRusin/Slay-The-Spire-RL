@@ -204,3 +204,22 @@ def test_map_screen_encodes_a_current_node_without_a_symbol():
     observation = SlayTheSpireEnv({}).flatten_observation(payload)
 
     assert np.isfinite(observation["screen"]).all()
+
+
+@pytest.mark.parametrize("fixture", ["card_reward", "combat_with_monsters"])
+def test_cards_without_is_playable_are_encoded(fixture):
+    # Seen live at the start of a run: a card in the state had no is_playable,
+    # and reading it crashed the actor.
+    payload = copy.deepcopy(load_payload(fixture))
+    game_state = payload["game_state"]
+    cards = (game_state.get("screen_state", {}).get("cards", [])
+             + (game_state.get("combat_state") or {}).get("hand", []))
+    assert cards, "the fixture should have cards to strip"
+    for card in cards:
+        card.pop("is_playable", None)
+
+    env = SlayTheSpireEnv(payload)
+    observation = env.flatten_observation(payload)
+
+    assert all(np.isfinite(value).all() for value in observation.values())
+    assert env.get_valid_action_mask(payload).any()

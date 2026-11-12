@@ -24,7 +24,7 @@ def get_hand_observation(combat_state):
         # Construct card observation
         card_observation = [
             float(card["exhausts"]),
-            float(card["is_playable"]),
+            float(card.get("is_playable", False)),
             card_cost,
             card_name_token,
             card_type_token,

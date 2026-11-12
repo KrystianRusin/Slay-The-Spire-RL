@@ -10,12 +10,20 @@
 #                 process, so the container stops when the actor does.
 #   STS_W/STS_H   resolution [640x360]      STS_FPS   frame cap [24]
 #   STS_HEAP      Java max heap [512m]      JAVA_OPTS extra JVM flags
+#   STS_INSTANCE_ROOT  if set, the instance folder is $STS_INSTANCE_ROOT/<hostname>,
+#                 so scaled-up containers sharing one mount each get their own
+#                 (the hostname is also the actor id in the learner's log).
+#                 Otherwise it's STS_INSTANCE_DIR [/instance].
 #   STS_MODS      mod ids passed to --mods [basemod,CommunicationMod]
 #                 Extra mod jars (e.g. NoRender) can be mounted at /extra-mods.
 set -euo pipefail
 
 GAME=${STS_GAME_DIR:-/game}
-INST=${STS_INSTANCE_DIR:-/instance}
+if [ -n "${STS_INSTANCE_ROOT:-}" ]; then
+  INST=$STS_INSTANCE_ROOT/$HOSTNAME
+else
+  INST=${STS_INSTANCE_DIR:-/instance}
+fi
 BOT_CMD=${STS_BOT_CMD:-python3 /opt/sts/app/bots/random_bot.py}
 W=${STS_W:-640}; H=${STS_H:-360}; FPS=${STS_FPS:-24}
 JAVA=$GAME/jre-linux/bin/java
@@ -83,7 +91,9 @@ GAME_CMD=("$JAVA" -Xmx"${STS_HEAP:-512m}" $JVM_TUNING ${JAVA_OPTS:-} -Duser.home
 if [ -z "${STS_ACTOR_CMD:-}" ]; then
   exec "${GAME_CMD[@]}"
 fi
-# Game output goes to a file so the container log is the actor's.
+# Game output goes to a file so the container log is the actor's. The actor's
+# output is also kept in actor.log, so a crash's traceback outlives the container.
 "${GAME_CMD[@]}" > "$INST/game.log" 2>&1 &
 echo "Game log: $INST/game.log. Starting actor: $STS_ACTOR_CMD"
+exec > >(tee -a "$INST/actor.log") 2>&1
 exec $STS_ACTOR_CMD

@@ -242,7 +242,7 @@ def handle_card_reward_screen(screen_state, screen_type_token):
         # Construct card observation
         card_data = [
             float(card["exhausts"]),
-            float(card["is_playable"]),
+            float(card.get("is_playable", False)),  # absent on some screens
             card_cost,
             float(card_name_token),
             float(card_type_token),
