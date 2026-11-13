@@ -12,7 +12,6 @@ import torch as th
 pytest.importorskip("rpc.learner_pb2", reason="generate it from rpc/learner.proto first")
 
 import learner_server  # noqa: E402
-from environment.run_env import act  # noqa: E402
 from learner_server import LearnerService, serve  # noqa: E402
 from model.policy import TrainingConfig, make_model  # noqa: E402
 from rpc import learner_pb2 as pb  # noqa: E402
@@ -20,7 +19,7 @@ from rpc.client import LearnerClient  # noqa: E402
 from rpc.codec import (BUFFER_FIELDS, config_from_proto, config_to_proto,  # noqa: E402
                        decode_state_dict, encode_state_dict, rollout_from_proto,
                        rollout_to_proto, state_dict_digest)
-from tests.rollouts import fill, make_buffer, mask_for  # noqa: E402
+from tests.rollouts import fill, make_buffer, mask_for, play  # noqa: E402
 
 
 @pytest.fixture
@@ -278,20 +277,6 @@ def test_a_rollout_from_before_the_update_is_rejected_as_stale(start_learner, ro
 
     assert not ack.accepted
     assert "made with v0, learner is on v1" in ack.reason
-
-
-def play(model, size=128):
-    """A rollout played by model the way run_environment plays one."""
-    buffer = make_buffer(model.observation_space, size=size)
-    generator = th.Generator().manual_seed(2)
-    for step in range(size):
-        obs = {key: th.rand(1, *space.shape, generator=generator)
-               for key, space in model.observation_space.spaces.items()}
-        mask = mask_for(buffer, (step * 11) % 141)
-        action, value, log_prob = act(model, obs, mask)
-        buffer.add(obs, th.tensor(action), float(step % 3), step % 20 == 19, value, log_prob, mask)
-    buffer.compute_returns_and_advantage(last_values=th.tensor([[0.0]]), dones=False)
-    return buffer
 
 
 def test_the_first_ratio_is_1_when_the_actor_played_with_the_learners_weights(start_learner):

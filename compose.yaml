@@ -6,7 +6,7 @@
 #   actor + learner
 #          headless game + middleman + RL actor, sending rollouts to the learner
 #          over gRPC; the learner trains on them
-#            mkdir -p run/actors                  # else docker creates it owned by root
+#            mkdir -p run/actors run/learner      # else docker creates them owned by root
 #            NUM_ACTORS=2 docker compose up --build learner actor
 #            tail -f run/actors/*/game.log        # one folder per actor, named by its id
 #          Set the actor count with NUM_ACTORS, not --scale: the learner waits for
@@ -57,7 +57,10 @@ services:
     <<: *sts-instance
     # Same image, but no game: skip the game-setup entrypoint and run the learner.
     entrypoint: ["python3", "/opt/sts/app/learner_server.py"]
+    volumes:
+      - ./run/learner:/learner     # checkpoints survive the container; delete them to start over
     environment:
+      LEARNER_CHECKPOINT_DIR: /learner/checkpoints
       LEARNER_PORT: "50051"
       LEARNER_NUM_ACTORS: ${NUM_ACTORS:-1}  # rollouts per training round: one per actor
       LEARNER_N_STEPS: ${LEARNER_N_STEPS:-}         # shorter rollouts for quick test runs

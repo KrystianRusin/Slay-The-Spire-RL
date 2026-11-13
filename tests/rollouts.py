@@ -4,6 +4,7 @@ import numpy as np
 import torch as th
 from gymnasium import spaces
 
+from environment.run_env import act
 from model.custom_rollout_buffer import CustomRolloutBuffer
 
 GAMMA = 0.97
@@ -59,5 +60,19 @@ def fill(buffer):
             action=step % 5,
             done=step % 7 == 6,
         )
+    buffer.compute_returns_and_advantage(last_values=th.tensor([[0.0]]), dones=False)
+    return buffer
+
+
+def play(model, size=128):
+    """A rollout played by model the way run_environment plays one."""
+    buffer = make_buffer(model.observation_space, size=size)
+    generator = th.Generator().manual_seed(2)
+    for step in range(size):
+        obs = {key: th.rand(1, *space.shape, generator=generator)
+               for key, space in model.observation_space.spaces.items()}
+        mask = mask_for(buffer, (step * 11) % 141)
+        action, value, log_prob = act(model, obs, mask)
+        buffer.add(obs, th.tensor(action), float(step % 3), step % 20 == 19, value, log_prob, mask)
     buffer.compute_returns_and_advantage(last_values=th.tensor([[0.0]]), dones=False)
     return buffer

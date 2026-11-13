@@ -5,7 +5,11 @@ has LEARNER_NUM_ACTORS of them, a background thread concatenates them, runs one
 PPO update, and publishes the next version. Actors wait for that version with a
 long poll (GetWeights with min_version) before playing their next rollout.
 
-Env: LEARNER_PORT [50051], LEARNER_NUM_ACTORS [1], LEARNER_N_STEPS [from TrainingConfig].
+After every update it saves a checkpoint to LEARNER_CHECKPOINT_DIR (if set),
+and on startup it resumes from the newest one there.
+
+Env: LEARNER_PORT [50051], LEARNER_NUM_ACTORS [1], LEARNER_N_STEPS [from TrainingConfig],
+LEARNER_CHECKPOINT_DIR [unset: no checkpoints].
 """
 import dataclasses
 import os
@@ -18,6 +22,7 @@ from concurrent import futures
 import grpc
 import numpy as np
 
+from model import checkpoint
 from model.custom_rollout_buffer import CustomRolloutBuffer
 from model.model_utils import train
 from model.policy import TrainingConfig, make_model
@@ -74,12 +79,14 @@ def merge_rollouts(rollouts, model):
 
 
 class LearnerService(learner_pb2_grpc.LearnerServicer):
-    def __init__(self, config, num_actors=1):
+    def __init__(self, config, num_actors=1, checkpoint_dir=None):
         self.config = config
         self.num_actors = num_actors
+        self.checkpoint_dir = checkpoint_dir
         self.model = make_model(config)
         self.policy = self.model.policy
         self.version = 0
+        resumed_from = self._resume() if checkpoint_dir else None
         self._weights = encode_state_dict(self.policy.state_dict())
         self._config = config_to_proto(config)
         self._lock = threading.Lock()  # gRPC serves calls on a thread pool
@@ -92,9 +99,22 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         self.last_stats = None
         self._round_started = time.monotonic()  # when the current version was published
         self._first_arrival = None  # when the current round's first rollout came in
+        if resumed_from:
+            log(f"learner: resumed from {resumed_from}")
         log(f"learner: serving weights v{self.version}, "
               f"sha={state_dict_digest(self.policy.state_dict())}, {len(self._weights) / 1e6:.2f} MB, "
               f"waiting for {num_actors} actor(s) per round")
+
+    def _resume(self):
+        """Load the newest checkpoint, if any. Returns its path, or None for a fresh start."""
+        state = checkpoint.load_latest(self.checkpoint_dir)
+        if state is None:
+            return None
+        # Carrying on under different settings would mix two runs into one.
+        checkpoint.check_config(state["config"], self.config)
+        checkpoint.restore(self.model, state)
+        self.version = state["version"]
+        return state["path"]
 
     def GetWeights(self, request, context):
         with self._lock:
@@ -172,6 +192,10 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         started = time.monotonic()
         stats = train(self.model, merge_rollouts(rollouts, self.model))
         weights = encode_state_dict(self.policy.state_dict())
+        if self.checkpoint_dir:
+            # Saved before it is published: once an actor can play with a version,
+            # a restarted learner resumes at that version, not the one before.
+            checkpoint.save_checkpoint(self.checkpoint_dir, self.version + 1, self.model, self.config)
 
         with self._lock:
             self.version += 1
@@ -215,7 +239,12 @@ def main():
     if os.environ.get("LEARNER_N_STEPS"):
         config = dataclasses.replace(config, n_steps=int(os.environ["LEARNER_N_STEPS"]))
 
-    service = LearnerService(config, num_actors)
+    try:
+        service = LearnerService(config, num_actors, os.environ.get("LEARNER_CHECKPOINT_DIR") or None)
+    except checkpoint.ConfigMismatch as e:
+        log(f"learner: refusing to resume, the newest checkpoint has a different config: {e}\n"
+            f"learner: to start a new run, move the checkpoint folder away")
+        sys.exit(1)
     service.start_training()
     server, _ = serve(service, port)
     log(f"learner: listening on port {port}")
