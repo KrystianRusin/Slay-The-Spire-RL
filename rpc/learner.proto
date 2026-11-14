@@ -29,12 +29,17 @@ message GetWeightsRequest {
   // doesn't, the reply has only the current version and no weights: ask again.
   // 0 means don't wait.
   int64 min_version = 2;
+  // The run_id of the learner this actor last got weights from, empty at first.
+  // If the learner has restarted since, it ignores min_version and answers at
+  // once with its current weights: the version being waited for may never come.
+  string run_id = 3;
 }
 
 message Weights {
   int64 version = 1;
   bytes state_dict = 2;   // torch.save() of the policy's state_dict
   PolicyConfig config = 3; // how to build the network these weights fit, and the PPO settings
+  string run_id = 4;      // new every time the learner process starts
 }
 
 // Mirrors model/policy.py TrainingConfig. The learner owns it; actors build from it.
@@ -71,4 +76,5 @@ message Rollout {
 message SubmitAck {
   bool accepted = 1;
   string reason = 2;  // why it was rejected, if it was
+  string run_id = 3;  // the learner process that now holds the rollout (or refused it)
 }

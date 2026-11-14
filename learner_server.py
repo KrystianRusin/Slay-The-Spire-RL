@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import traceback
+import uuid
 from concurrent import futures
 
 import grpc
@@ -86,6 +87,7 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         self.model = make_model(config)
         self.policy = self.model.policy
         self.version = 0
+        self.run_id = uuid.uuid4().hex[:12]  # tells actors this learner process from earlier ones
         resumed_from = self._resume() if checkpoint_dir else None
         self._weights = encode_state_dict(self.policy.state_dict())
         self._config = config_to_proto(config)
@@ -103,7 +105,7 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
             log(f"learner: resumed from {resumed_from}")
         log(f"learner: serving weights v{self.version}, "
               f"sha={state_dict_digest(self.policy.state_dict())}, {len(self._weights) / 1e6:.2f} MB, "
-              f"waiting for {num_actors} actor(s) per round")
+              f"waiting for {num_actors} actor(s) per round, run_id={self.run_id}")
 
     def _resume(self):
         """Load the newest checkpoint, if any. Returns its path, or None for a fresh start."""
@@ -117,14 +119,20 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         return state["path"]
 
     def GetWeights(self, request, context):
+        # An actor that knew an earlier learner process may be waiting for a version
+        # that died with it (its rollout was in the lost pool), so don't make it wait.
+        restarted = request.run_id not in ("", self.run_id)
+        min_version = 0 if restarted else request.min_version
         with self._lock:
             # Releases the lock while waiting, so rollouts and training carry on.
-            self._new_version.wait_for(lambda: self.version >= request.min_version,
+            self._new_version.wait_for(lambda: self.version >= min_version,
                                        timeout=self.long_poll_seconds)
-            if self.version < request.min_version:
-                return pb.Weights(version=self.version)  # not yet: no weights, ask again
-            log(f"learner: actor {request.actor_id} fetched weights v{self.version}")
-            return pb.Weights(version=self.version, state_dict=self._weights, config=self._config)
+            if self.version < min_version:
+                return pb.Weights(version=self.version, run_id=self.run_id)  # not yet: ask again
+            log(f"learner: actor {request.actor_id} fetched weights v{self.version}"
+                + (f" (it last saw learner run {request.run_id})" if restarted else ""))
+            return pb.Weights(version=self.version, state_dict=self._weights, config=self._config,
+                              run_id=self.run_id)
 
     def SubmitRollout(self, request, context):
         try:
@@ -161,13 +169,13 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
                   f"round {len(self._pool)}/{self.num_actors}")
             if len(self._pool) == self.num_actors:
                 self._round_full.notify()
-        return pb.SubmitAck(accepted=True)
+        return pb.SubmitAck(accepted=True, run_id=self.run_id)
 
     def _reject(self, request, reason):
         """Refuse a rollout. The caller holds the lock."""
         self.rejected += 1
         log(f"learner: REJECTED rollout from actor {request.actor_id}: {reason}")
-        return pb.SubmitAck(accepted=False, reason=reason)
+        return pb.SubmitAck(accepted=False, reason=reason, run_id=self.run_id)
 
     def start_training(self):
         threading.Thread(target=self._training_loop, name="trainer", daemon=True).start()

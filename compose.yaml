@@ -57,6 +57,7 @@ services:
     <<: *sts-instance
     # Same image, but no game: skip the game-setup entrypoint and run the learner.
     entrypoint: ["python3", "/opt/sts/app/learner_server.py"]
+    restart: unless-stopped        # after a crash it comes back and resumes from its checkpoint
     volumes:
       - ./run/learner:/learner     # checkpoints survive the container; delete them to start over
     environment:
