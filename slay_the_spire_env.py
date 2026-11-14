@@ -97,7 +97,6 @@ class SlayTheSpireEnv(gym.Env):
         super(SlayTheSpireEnv, self).__init__()
         self.state = initial_state
         self.previous_state = None
-        self.previous_action = None
         self.curr_action = None
         self.action_taken = False
         self.recent_actions = []  # Store recent actions to avoid loops
@@ -232,8 +231,6 @@ class SlayTheSpireEnv(gym.Env):
 
     def reset(self, seed=None, options=None):
         # Reset internal variables
-        self.current_command = None
-        self.current_args = {}
         self.previous_state = None
         self.curr_action = None
         self.action_taken = False
@@ -248,8 +245,8 @@ class SlayTheSpireEnv(gym.Env):
         # Return the observation and an empty dictionary (or any relevant reset info)
         return observation, {}
 
-    def step(self, action):
-        self.previous_action = self.curr_action
+    def record_action(self, action):
+        """Note the action just sent to the game. The mask's loop guards read it."""
         self.curr_action = action
 
         # Add the action to the recent action list
@@ -260,33 +257,19 @@ class SlayTheSpireEnv(gym.Env):
         if combat_turn(self.state) is not None and self.actions[action].command != "end":
             self.action_taken = True
 
-        # Calculate the reward based on the action taken and state transition
-        reward = self.calculate_reward()
-
-        # Check if the episode is done
-        done = self.check_if_done()
-
-        # Clear the current command and arguments for the next step
-        self.current_command = None
-        self.current_args = {}
-
-        # Flatten the observation based on the new game state
-        observation = self.flatten_observation(self.state)
-
-        return observation, reward, done, {}
-
     def update_game_state(self, state):
         self.previous_state = copy.deepcopy(self.state) 
         self.state = state
         if combat_turn(state) != combat_turn(self.previous_state):
             self.action_taken = False
 
-    def calculate_reward(self):
+    def calculate_reward(self, action):
+        """The reward for action, the one that took the game from previous_state to state."""
         reward = 0
         # Check if previous_state and current state exist
-        if self.previous_state is None or self.state is None or self.previous_action is None:
+        if self.previous_state is None or self.state is None:
             return reward
-        taken = self.actions[self.previous_action]
+        taken = self.actions[action]
 
         previous_game_state = self.previous_state.get('game_state', None)
         current_game_state = self.state.get('game_state', None)

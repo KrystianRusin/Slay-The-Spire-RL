@@ -168,8 +168,7 @@ def reward_for(previous, current, action="END"):
     env = SlayTheSpireEnv(current)
     env.previous_state = previous
     env.state = current
-    env.previous_action = env.action_ids[action]
-    return env.calculate_reward()
+    return env.calculate_reward(env.action_ids[action])
 
 
 def test_finishing_a_combat_is_rewarded():
@@ -188,9 +187,8 @@ def test_finishing_a_combat_is_rewarded():
 
 def test_the_reward_needs_no_previous_state():
     env = SlayTheSpireEnv(load_payload("combat_with_monsters"))
-    env.previous_action = env.action_ids["END"]
 
-    assert env.calculate_reward() == 0
+    assert env.calculate_reward(env.action_ids["END"]) == 0
 
 
 def test_map_screen_encodes_a_current_node_without_a_symbol():

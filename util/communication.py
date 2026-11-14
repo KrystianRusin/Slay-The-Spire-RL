@@ -49,26 +49,3 @@ class FramedConnection:
         data = bytes(self._buffer[:size])
         del self._buffer[:size]
         return data
-
-
-def handle_end_of_episode(connection):
-    """
-    Handles the end-of-episode scenario by sending the necessary commands
-    to navigate through the game over screen and start a new game.
-    """
-    commands = ["PROCEED", "PROCEED"]
-
-    for command in commands:
-        connection.send(command)
-        print(f"Sent '{command}' command")
-
-        try:
-            connection.receive_json()
-            print(f"Game state received after '{command}'")
-
-        except json.JSONDecodeError as e:
-            print(f"Failed to decode JSON after '{command}': {e}")
-            return
-        except ConnectionError as e:
-            print(f"Connection error after '{command}': {e}")
-            return

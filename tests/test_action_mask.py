@@ -50,7 +50,7 @@ def legal_actions(env):
 
 
 def take(env, action):
-    env.step(env.action_ids[action])
+    env.record_action(env.action_ids[action])
 
 
 def next_turn(payload):

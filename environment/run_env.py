@@ -1,4 +1,5 @@
 import copy
+import random
 import torch as th
 import socket
 import os
@@ -8,7 +9,7 @@ from collections import deque
 from slay_the_spire_env import SlayTheSpireEnv
 from model.custom_rollout_buffer import CustomRolloutBuffer
 from model.policy import TrainingConfig, make_model
-from util.communication import FramedConnection, handle_end_of_episode
+from util.communication import FramedConnection
 from util.plotting import plot_performance_metrics
 from util.data_processor import process_game_state
 import json
@@ -58,6 +59,75 @@ def act(model, obs_tensor, action_mask):
     return int(action.item()), value, log_prob
 
 
+def to_tensors(obs, device):
+    return {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in obs.items()}
+
+
+class Actor:
+    """Turns each game state into the command to send back, and records PPO steps.
+
+    An action is only finished once the game answers it: the next state says
+    what reward it earned and whether it ended the run. So the step taken is
+    kept as pending, and goes into the buffer when the following state arrives.
+
+    The game-over screen and the main menu aren't decisions, so they aren't
+    recorded: the actor sends PROCEED, then starts a run as a random character.
+
+    on_rollout_full() is called each time the buffer fills, after the returns
+    are computed and before the next action is chosen, so it can hand the
+    rollout off and swap in new weights.
+    """
+
+    def __init__(self, env, model, buffer, on_rollout_full, rng=None):
+        self.env = env
+        self.model = model
+        self.buffer = buffer
+        self.on_rollout_full = on_rollout_full
+        self.rng = rng or random.Random()
+        self.pending = None  # (obs_tensor, action, value, log_prob, mask) sent, awaiting its result
+        self.episode_reward = 0.0
+        self.episode_steps = 0
+        self.ended = None  # (reward, steps) of the run that ended on the last state, else None
+
+    def on_state(self, state):
+        env = self.env
+        env.update_game_state(state)
+        done = env.check_if_done()
+        obs_tensor = to_tensors(env.flatten_observation(state), self.model.device)
+        self.ended = None
+
+        if self.pending is not None:
+            self._finish_pending(done, obs_tensor)
+
+        if done:
+            self.ended = (self.episode_reward, self.episode_steps)
+            self.episode_reward, self.episode_steps = 0.0, 0
+            return "PROCEED"
+        if not state.get("game_state"):
+            # Main menu: no run to observe yet. Both characters stay in the mix.
+            return self.rng.choice([env.actions[i].text for i in env.actions_by_command["start"]])
+
+        action_mask = env.get_valid_action_mask(state)
+        action, value, log_prob = act(self.model, obs_tensor, action_mask)
+        env.record_action(action)
+        self.pending = (obs_tensor, action, value, log_prob, action_mask)
+        return env.actions[action].text
+
+    def _finish_pending(self, done, next_obs_tensor):
+        obs_tensor, action, value, log_prob, action_mask = self.pending
+        self.pending = None
+        reward = self.env.calculate_reward(action)
+        self.episode_reward += reward
+        self.episode_steps += 1
+        self.buffer.add(obs_tensor, th.tensor(action, dtype=th.long), reward, done,
+                        value, log_prob, action_mask)
+        if len(self.buffer) >= self.buffer.buffer_size:
+            with th.no_grad():
+                last_value = self.model.policy.predict_values(next_obs_tensor)
+            self.buffer.compute_returns_and_advantage(last_values=last_value, dones=done)
+            self.on_rollout_full()
+
+
 def run_environment(env_id, port, experience_queue, host="localhost",
                     config=None, initial_state_dict=None, next_weights=None):
     """
@@ -100,91 +170,53 @@ def run_environment(env_id, port, experience_queue, host="localhost",
         n_envs=1
     )
 
-    current_step = 0
+    def on_rollout_full():
+        hand_off_rollout(rollout_buffer, experience_queue)
+        if next_weights is not None:
+            model.policy.load_state_dict(next_weights())
+
+    actor = Actor(env, model, rollout_buffer, on_rollout_full)
     episode = 0
+    game_id = None
 
     while True:
-        done = False
-        total_reward = 0
-        episode_length = 0
-        obs = env.reset()
-        game_id = None
+        try:
+            game_state = connection.receive_json()
+        except json.JSONDecodeError as e:
+            print(f"Failed to decode JSON in environment {env_id}: {e}")
+            continue
+        except ConnectionError as e:
+            # The game or middleman is gone; there is nothing to recover here.
+            print(f"Connection error in environment {env_id}: {e}", flush=True)
+            client_socket.close()
+            sys.exit(1)
 
-        while not done:
-            try:
-                game_state = connection.receive_json()
-            except json.JSONDecodeError as e:
-                print(f"Failed to decode JSON in environment {env_id}: {e}")
-                continue
-            except ConnectionError as e:
-                # The game or middleman is gone; there is nothing to recover here.
-                print(f"Connection error in environment {env_id}: {e}", flush=True)
-                client_socket.close()
-                sys.exit(1)
+        command = actor.on_state(game_state)
+        connection.send(command)
 
-            env.update_game_state(game_state)
-            obs = env.flatten_observation(game_state)
-            obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in obs.items()}
+        if TRACK_DB:
+            game_id = process_game_state(game_state, command, game_id)
 
-            action_mask = env.get_valid_action_mask(game_state)
-            action, values, log_prob = act(model, obs_tensor, action_mask)
-            chosen_command = env.actions[action].text
-            connection.send(chosen_command)
+        if actor.ended is not None:
+            total_reward, episode_length = actor.ended
+            screen_state = game_state['game_state'].get('screen_state', {})
+            victory = screen_state.get('victory', False)
+            floor_reached = game_state['game_state'].get('floor', 0)
+            character = game_state['game_state'].get('class', '?')
+            print(f"Environment {env_id}: episode {episode} done: {character} "
+                  f"floor={floor_reached} victory={victory} reward={total_reward:.1f} "
+                  f"steps={episode_length}", flush=True)
 
             if TRACK_DB:
-                game_id = process_game_state(game_state, chosen_command, game_id)
+                update_game_stats_on_game_over(game_state, game_id, total_reward)
+                track_card_performance(game_state['game_state'], floor_reached, victory)
+            game_id = None
 
-            new_obs, reward, done, info = env.step(action)
-            total_reward += reward
-            episode_length += 1
-
-            new_obs_tensor = {key: th.tensor(value, dtype=th.float32).unsqueeze(0).to(device) for key, value in new_obs.items()}
-            action_tensor = th.tensor(action, dtype=th.long).to(device)
-
-            rollout_buffer.add(
-                obs_tensor,
-                action_tensor,
-                reward,
-                done,
-                values,
-                log_prob,
-                action_mask,
-            )
-
-            obs = new_obs
-            current_step += 1
-
-            if len(rollout_buffer) >= n_steps:
-                rollout_buffer.compute_returns_and_advantage(last_values=model.policy.predict_values(new_obs_tensor), dones=done)
-                hand_off_rollout(rollout_buffer, experience_queue)
-                if next_weights is not None:
-                    model.policy.load_state_dict(next_weights())
-            if done:
-                screen_state = game_state['game_state'].get('screen_state', {})
-                victory = screen_state.get('victory', False)
-                floor_reached = game_state['game_state'].get('floor', 0)
-
-                character = game_state['game_state'].get('class', '?')
-                print(f"Environment {env_id}: episode {episode} done: {character} "
-                      f"floor={floor_reached} victory={victory} reward={total_reward:.1f} "
-                      f"steps={episode_length}", flush=True)
-
-                # Update the game stats and card performance before sending any commands
-                if TRACK_DB:
-                    update_game_stats_on_game_over(game_state, game_id, total_reward)
-                    track_card_performance(game_state['game_state'], floor_reached, victory)
-
-        episode_rewards.append(total_reward)
-        episode_lengths.append(episode_length)
-        reward_queue.append(total_reward)
-        highest_reward = max(highest_reward, total_reward)
-        rolling_avg = sum(reward_queue) / len(reward_queue) if reward_queue else 0
-
-        if PLOT and episode % 10 == 0:
-            plot_performance_metrics(episode_rewards, episode_lengths, [rolling_avg], highest_reward)
-
-        episode += 1
-  
-        handle_end_of_episode(connection)
-
-    client_socket.close()
+            episode_rewards.append(total_reward)
+            episode_lengths.append(episode_length)
+            reward_queue.append(total_reward)
+            highest_reward = max(highest_reward, total_reward)
+            rolling_avg = sum(reward_queue) / len(reward_queue) if reward_queue else 0
+            if PLOT and episode % 10 == 0:
+                plot_performance_metrics(episode_rewards, episode_lengths, [rolling_avg], highest_reward)
+            episode += 1
