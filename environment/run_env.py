@@ -78,8 +78,9 @@ class Actor:
     rollout off and swap in new weights.
     """
 
-    def __init__(self, env, model, buffer, on_rollout_full, rng=None):
+    def __init__(self, env, model, buffer, on_rollout_full, rng=None, reward_scale=1.0):
         self.env = env
+        self.reward_scale = reward_scale
         self.model = model
         self.buffer = buffer
         self.on_rollout_full = on_rollout_full
@@ -117,9 +118,9 @@ class Actor:
         obs_tensor, action, value, log_prob, action_mask = self.pending
         self.pending = None
         reward = self.env.calculate_reward(action)
-        self.episode_reward += reward
+        self.episode_reward += reward  # unscaled, for the logs
         self.episode_steps += 1
-        self.buffer.add(obs_tensor, th.tensor(action, dtype=th.long), reward, done,
+        self.buffer.add(obs_tensor, th.tensor(action, dtype=th.long), reward * self.reward_scale, done,
                         value, log_prob, action_mask)
         if len(self.buffer) >= self.buffer.buffer_size:
             with th.no_grad():
@@ -175,7 +176,7 @@ def run_environment(env_id, port, experience_queue, host="localhost",
         if next_weights is not None:
             model.policy.load_state_dict(next_weights())
 
-    actor = Actor(env, model, rollout_buffer, on_rollout_full)
+    actor = Actor(env, model, rollout_buffer, on_rollout_full, reward_scale=config.reward_scale)
     episode = 0
     game_id = None
 

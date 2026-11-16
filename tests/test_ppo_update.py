@@ -69,3 +69,23 @@ def test_a_failing_update_raises_instead_of_being_logged_and_skipped(monkeypatch
 
     with pytest.raises(ZeroDivisionError):
         train(model, buffer)
+
+
+def test_explained_variance_is_1_when_the_values_already_match_the_returns():
+    model = make_model()
+    buffer = fill(make_buffer(model.observation_space, size=64))
+    buffer.values = buffer.returns.copy()
+
+    stats = train(model, buffer)
+
+    assert stats.explained_variance == pytest.approx(1.0)
+    assert stats.returns_mean == pytest.approx(float(buffer.returns.mean()))
+    assert stats.returns_std == pytest.approx(float(buffer.returns.std()))
+
+
+def test_explained_variance_is_0_when_the_values_are_just_the_mean():
+    model = make_model()
+    buffer = fill(make_buffer(model.observation_space, size=64))
+    buffer.values[:] = buffer.returns.mean()
+
+    assert train(model, buffer).explained_variance == pytest.approx(0.0, abs=1e-5)

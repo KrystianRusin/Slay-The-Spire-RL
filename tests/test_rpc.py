@@ -76,7 +76,8 @@ def test_weights_survive_the_round_trip_and_the_digest_tracks_them():
 
 
 def test_a_config_survives_the_round_trip_exactly():
-    config = TrainingConfig(n_steps=512, gamma=0.9, ent_coef=0.01, policy_layers=(128, 32))
+    config = TrainingConfig(n_steps=512, gamma=0.9, ent_coef=0.01, policy_layers=(128, 32),
+                            reward_scale=0.05)
 
     message = pb.PolicyConfig.FromString(config_to_proto(config).SerializeToString())
 

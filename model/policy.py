@@ -18,6 +18,9 @@ class TrainingConfig:
     n_steps: int = 2048
     gamma: float = 0.97
     gae_lambda: float = 0.95
+    # Actors multiply every reward by this, so returns come out around unit size
+    # and the value loss doesn't swamp the policy's share of the gradient.
+    reward_scale: float = 0.02  # raw returns have a std of ~45 (measured 2026-11-14)
     # Used by the learner's update.
     learning_rate: float = 3e-4
     ent_coef: float = 0.03

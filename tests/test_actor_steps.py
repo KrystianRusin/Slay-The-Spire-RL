@@ -45,12 +45,12 @@ def chosen(monkeypatch):
 
 @pytest.fixture
 def make_actor():
-    def make(size=16, on_full=None, rng=None):
+    def make(size=16, on_full=None, rng=None, reward_scale=1.0):
         env = SlayTheSpireEnv({})
         model = make_model(TrainingConfig(policy_layers=(16,), value_layers=(16,)), env=env)
         buffer = CustomRolloutBuffer(size, env.observation_space, env.action_space, device="cpu",
                                      gamma=model.gamma, gae_lambda=model.gae_lambda, n_envs=1)
-        return Actor(env, model, buffer, on_full or (lambda: None), rng=rng)
+        return Actor(env, model, buffer, on_full or (lambda: None), rng=rng, reward_scale=reward_scale)
     return make
 
 
@@ -189,3 +189,16 @@ def test_the_next_action_is_chosen_after_the_rollout_is_handed_off(make_actor, c
 
     # So an action is always sampled by the weights its rollout is tagged with.
     assert events == ["act", "handed off", "act"]
+
+
+def test_rewards_are_recorded_scaled_but_logged_unscaled(make_actor, chosen):
+    actor = make_actor(reward_scale=0.1)
+    start = combat()
+    chosen += ["END", "END"]
+
+    feed(actor, [start, player_hit(start, 5), died(player_hit(start, 5))])
+
+    unscaled = -5 * HP_LOSS_PENALTY + STEP_PENALTY
+    assert actor.buffer.rewards[0] == pytest.approx(unscaled * 0.1)
+    assert actor.ended[0] == pytest.approx(unscaled - (start["game_state"]["current_hp"] - 5) * HP_LOSS_PENALTY
+                                           + STEP_PENALTY)

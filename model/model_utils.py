@@ -22,6 +22,11 @@ class TrainStats(NamedTuple):
     # About 0 only if the learner sees what the actor saw: same weights, observations and masks.
     first_ratio_error_mean: float
     first_ratio_error_max: float
+    # The value targets, and how much of their variance the value head (as the
+    # actors had it) already explained: 1 is perfect, 0 no better than the mean.
+    returns_mean: float
+    returns_std: float
+    explained_variance: float
 
 
 def ppo_loss(policy, batch, clip_range, ent_coef, vf_coef):
@@ -58,6 +63,9 @@ def train(model, buffer, progress_remaining=1.0):
     """
     clip_range = model.clip_range(progress_remaining)
     first_ratio = None
+    returns, values = buffer.returns[:buffer.pos], buffer.values[:buffer.pos]
+    returns_variance = np.var(returns)
+    explained_variance = 1 - np.var(returns - values) / returns_variance if returns_variance > 0 else float("nan")
 
     for _ in range(model.n_epochs):
         epoch = []
@@ -78,4 +86,5 @@ def train(model, buffer, progress_remaining=1.0):
     policy_loss, value_loss, entropy_loss, approx_kl = np.mean(epoch, axis=0)
     first_error = th.abs(first_ratio - 1)
     return TrainStats(buffer.pos, float(policy_loss), float(value_loss), float(entropy_loss), float(approx_kl),
-                      first_error.mean().item(), first_error.max().item())
+                      first_error.mean().item(), first_error.max().item(),
+                      float(np.mean(returns)), float(np.std(returns)), float(explained_variance))

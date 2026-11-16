@@ -222,7 +222,9 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
               f"policy_loss={stats.policy_loss:.4f}, value_loss={stats.value_loss:.2f}, "
               f"entropy_loss={stats.entropy_loss:.4f}, approx_kl={stats.approx_kl:.4f}, "
               f"first |ratio-1| mean={stats.first_ratio_error_mean:.6f} "
-              f"max={stats.first_ratio_error_max:.6f}")
+              f"max={stats.first_ratio_error_max:.6f}, "
+              f"returns mean={stats.returns_mean:.2f} std={stats.returns_std:.2f}, "
+              f"explained_variance={stats.explained_variance:.3f}")
         log(f"learner: round for v{version - 1} took {round_seconds:.1f}s, "
               f"{stats.steps / round_seconds:.2f} steps/s overall, "
               f"rollouts arrived over {spread:.1f}s")

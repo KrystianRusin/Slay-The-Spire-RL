@@ -54,6 +54,7 @@ message PolicyConfig {
   int32 batch_size = 8;
   repeated int32 policy_layers = 9;
   repeated int32 value_layers = 10;
+  double reward_scale = 11;
 }
 
 // Every Tensor has n_steps as its first dimension.
