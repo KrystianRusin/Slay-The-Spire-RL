@@ -32,6 +32,9 @@ COPY . /opt/sts/app/
 # Generate the gRPC code from the contract. Not committed, so it can't drift from the .proto.
 RUN cd /opt/sts/app && python -m grpc_tools.protoc -I . --python_out=. --grpc_python_out=. rpc/learner.proto
 COPY docker/game/entrypoint.sh /opt/sts/entrypoint.sh
+# The Go coordinator's binary, so the Python tests can start the real one. The
+# "coordinator" build context is the coordinator image (see compose.yaml).
+COPY --from=coordinator /coordinator /opt/sts/bin/coordinator
 
 # Per-run state (saves, prefs, logs) lives here; compose mounts a host dir over it.
 ENV STS_GAME_DIR=/game \

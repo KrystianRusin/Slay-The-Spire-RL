@@ -2,11 +2,34 @@
 //
 // Actors play the game and send experience up; the learner trains and sends
 // weights down. Python code is generated from this file at image build time
-// (see docker/game/Dockerfile); the Go services in Phase 2 generate from it too.
+// (see docker/game/Dockerfile), and the Go coordinator's code too
+// (docker/coordinator/Dockerfile).
 syntax = "proto3";
 
 package sts.v1;
 
+// Where the generated Go code lives (coordinator/gen/stsv1, made at build time).
+option go_package = "sts/coordinator/gen/stsv1;stsv1";
+
+// Served by the Go coordinator: what actors call.
+service Actors {
+  // The current policy, with the same long poll as Learner.GetWeights below:
+  // wait for min_version, unless the learner restarted (run_id changed).
+  rpc GetWeights(GetWeightsRequest) returns (Weights);
+}
+
+// Served by the Go coordinator: what the learner calls.
+service Trainer {
+  // Make these the weights actors get. The newest publish wins; publishing the
+  // same version and run_id again is a no-op, so the learner can repeat it.
+  rpc PublishWeights(Weights) returns (PublishAck);
+}
+
+message PublishAck {
+  bool replaced = 1;  // false if the coordinator already had exactly this version
+}
+
+// Served by the Python learner.
 service Learner {
   // The current policy. An actor calls this at startup, and after every
   // rollout with min_version set to wait for the next one (a long poll).

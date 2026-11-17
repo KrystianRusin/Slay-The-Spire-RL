@@ -26,8 +26,8 @@ def test_observations_are_structurally_sound(named_payload, env_class, observati
 
 @pytest.mark.xfail(
     strict=True,
-    reason="Observations do not yet conform: ticket 05 (normalization), with "
-           "the token ranges it inherits from ticket 03. Run with --runxfail "
+    reason="Observations do not yet conform: some values aren't normalized into "
+           "their declared ranges, token ids among them. Run with --runxfail "
            "to see which components are out of bounds.",
 )
 def test_observations_conform_to_the_declared_space(env_class, observation_space):

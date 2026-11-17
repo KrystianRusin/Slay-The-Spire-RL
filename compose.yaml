@@ -1,6 +1,6 @@
 # Local stack.
 #
-#   game   headless game + random bot (Phase 1 / M1)
+#   game   headless game + random bot, to check the game runs
 #            docker compose up --build game
 #            tail -f run/game/random_bot.log      # steps, steps/s, floor
 #   actor + learner
@@ -20,11 +20,23 @@ x-sts-instance: &sts-instance
   build:
     context: .
     dockerfile: docker/game/Dockerfile
+    additional_contexts:
+      coordinator: service:coordinator  # the Go binary, so tests can run the real thing
   image: sts-game:dev
   init: true                          # tini as PID 1, so child processes get reaped and signals work
   user: "${UID:-1000}:${GID:-1000}"   # files in run/ stay owned by you, not root
 
 services:
+  coordinator:
+    # Hands out the learner's latest weights to actors (Go, its own small image).
+    build:
+      context: .
+      dockerfile: docker/coordinator/Dockerfile
+    image: sts-coordinator:dev
+    init: true
+    environment:
+      COORDINATOR_PORT: "50052"
+
   game:
     <<: *sts-instance
     volumes:
@@ -46,7 +58,7 @@ services:
       STS_MIDDLEMAN_PORT: "9999"   # one game per container, so a fixed port is safe
       STS_TRACK_DB: "0"            # no Postgres in this stack
       STS_PLOT: "0"
-      STS_FPS: "120"               # measured best speed/CPU trade-off (tickets/game-speed)
+      STS_FPS: "120"               # measured best trade-off of game speed against CPU
       MIDDLEMAN_VERBOSE: ${MIDDLEMAN_VERBOSE:-}  # 1 = log every state and command
     deploy:
       replicas: ${NUM_ACTORS:-1}

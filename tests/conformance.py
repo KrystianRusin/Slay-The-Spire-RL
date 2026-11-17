@@ -11,8 +11,9 @@ from dataclasses import dataclass
 import numpy as np
 
 # Problems that are about the shape of the observation rather than the values
-# in it. These already hold today, so a test can assert on them alone and stay
-# green while the value problems wait on tickets 03-05.
+# in it. These already hold, so a test can assert on them alone and stay green
+# while values are still out of their declared ranges (see the xfail in
+# test_observation_conformance.py).
 STRUCTURAL_PROBLEMS = frozenset({
     "missing", "undeclared", "wrong shape", "non-finite values",
 })

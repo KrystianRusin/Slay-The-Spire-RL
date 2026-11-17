@@ -1,5 +1,5 @@
 # Test dependencies. Kept out of requirements.txt so a training container does
-# not carry them (ticket 16).
+# not carry them.
 #
 #   pip install -r requirements-dev.txt
 #   pytest

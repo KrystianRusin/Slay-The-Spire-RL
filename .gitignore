@@ -27,3 +27,6 @@ run/
 # Generated from rpc/learner.proto (at image build, or locally with grpc_tools.protoc)
 rpc/*_pb2.py
 rpc/*_pb2_grpc.py
+
+# Generated from rpc/learner.proto at image build
+coordinator/gen/

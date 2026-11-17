@@ -73,7 +73,7 @@ def test_the_map_fixtures_are_the_size_of_a_real_act(named_payload):
     """A whole act, not a stub: fifteen rows, and rows past the declared high.
 
     The map component declares a high of 10 while real rows reach 14, so a
-    fixture with a short map would hide a bound ticket 05 has to fix.
+    fixture with a short map would hide that out-of-range value.
     """
     name, payload = named_payload
     if SCREEN_COVERAGE[name] is None:
@@ -104,12 +104,12 @@ def test_the_combat_piles_add_up_to_the_deck():
 
 
 def test_the_sentinel_costs_are_represented():
-    """Ticket 05 has to re-encode these, so they must appear in live data.
+    """The special cost values appear in the fixtures, so their encoding is tested.
 
     An X-cost card reports -1 and an unplayable curse reports -2. Both sit
-    below the declared lower bound of the hand and deck components. They are
-    in the hand rather than only in the deck because the deck observation is
-    dead until ticket 04.
+    below the declared lower bound of the hand and deck components, and will
+    need re-encoding. They are in the hand, not only the deck, so the hand
+    encoder sees them too.
     """
     game_state = load_payload("combat_with_monsters")["game_state"]
     hand_costs = {card["cost"] for card in game_state["combat_state"]["hand"]}
@@ -119,7 +119,7 @@ def test_the_sentinel_costs_are_represented():
 
 
 def test_the_combat_pair_represents_a_combat_ending():
-    """Ticket 04 needs a before/after pair for the combat-completion reward."""
+    """A before/after pair for testing the combat-completion reward."""
     before = load_payload("combat_with_monsters")["game_state"]
     after = load_payload("combat_reward")["game_state"]
 

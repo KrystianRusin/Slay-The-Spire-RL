@@ -3,7 +3,7 @@
 With LEARNER_ADDR set, the actor fetches its starting weights from the learner,
 submits each finished rollout to it over gRPC, and then waits for the learner's
 next version before playing the next rollout. Without it,
-rollouts go to a stand-in that logs and drops them (M2), so the actor can be
+rollouts go to a stand-in that logs and drops them, so the actor can be
 tested with no learner running.
 
 The learner also sends the TrainingConfig (rollout length, gamma, network
