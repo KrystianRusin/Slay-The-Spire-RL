@@ -145,3 +145,16 @@ func TestWaitStopsWhenTheCallerHangsUp(t *testing.T) {
 		t.Fatalf("ok=%v err=%v, want context.Canceled", ok, err)
 	}
 }
+
+func TestVersionReportsWhatIsHeld(t *testing.T) {
+	store := NewStore()
+	if version, runID := store.Version(); version != 0 || runID != "" {
+		t.Fatalf("empty store reports v%d %q, want v0 \"\"", version, runID)
+	}
+
+	store.Publish(weightsAt(4, "run-a"))
+
+	if version, runID := store.Version(); version != 4 || runID != "run-a" {
+		t.Fatalf("got v%d %q, want v4 run-a", version, runID)
+	}
+}

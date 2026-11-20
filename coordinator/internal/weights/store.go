@@ -44,6 +44,17 @@ func (s *Store) Publish(w *stsv1.Weights) bool {
 	return true
 }
 
+// Version returns the version and run ID of the current weights, or 0 and ""
+// if nothing has been published yet.
+func (s *Store) Version() (version int64, runID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.current == nil {
+		return 0, ""
+	}
+	return s.current.Version, s.current.RunId
+}
+
 // Wait returns the current weights once their version is at least minVersion,
 // waiting up to timeout. If the weights come from a different learner run than
 // runID (and runID isn't empty), it returns them at once whatever the version:

@@ -3,9 +3,11 @@
 #   game   headless game + random bot, to check the game runs
 #            docker compose up --build game
 #            tail -f run/game/random_bot.log      # steps, steps/s, floor
-#   actor + learner
+#   actor + learner + coordinator
 #          headless game + middleman + RL actor, sending rollouts to the learner
-#          over gRPC; the learner trains on them
+#          over gRPC; the learner trains on them and publishes each new version
+#          of the weights to the coordinator, which hands them to the actors
+#          (compose starts the coordinator for you)
 #            mkdir -p run/actors run/learner      # else docker creates them owned by root
 #            NUM_ACTORS=2 docker compose up --build learner actor
 #            tail -f run/actors/*/game.log        # one folder per actor, named by its id
@@ -34,6 +36,7 @@ services:
       dockerfile: docker/coordinator/Dockerfile
     image: sts-coordinator:dev
     init: true
+    restart: unless-stopped        # it holds nothing on disk; the learner re-publishes to it
     environment:
       COORDINATOR_PORT: "50052"
 
@@ -55,6 +58,7 @@ services:
       STS_BOT_CMD: python3 /opt/sts/app/middleman_process.py
       STS_ACTOR_CMD: python3 /opt/sts/app/run_actor.py
       LEARNER_ADDR: learner:50051  # compose gives each service a hostname = its name
+      COORDINATOR_ADDR: coordinator:50052
       STS_MIDDLEMAN_PORT: "9999"   # one game per container, so a fixed port is safe
       STS_TRACK_DB: "0"            # no Postgres in this stack
       STS_PLOT: "0"
@@ -64,6 +68,7 @@ services:
       replicas: ${NUM_ACTORS:-1}
     depends_on:
       - learner
+      - coordinator
 
   learner:
     <<: *sts-instance
@@ -72,7 +77,10 @@ services:
     restart: unless-stopped        # after a crash it comes back and resumes from its checkpoint
     volumes:
       - ./run/learner:/learner     # checkpoints survive the container; delete them to start over
+    depends_on:
+      - coordinator
     environment:
+      COORDINATOR_ADDR: coordinator:50052
       LEARNER_CHECKPOINT_DIR: /learner/checkpoints
       LEARNER_PORT: "50051"
       LEARNER_NUM_ACTORS: ${NUM_ACTORS:-1}  # rollouts per training round: one per actor

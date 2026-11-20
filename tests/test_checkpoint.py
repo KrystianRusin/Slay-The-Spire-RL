@@ -16,6 +16,16 @@ from tests.rollouts import play  # noqa: E402
 CONFIG = TrainingConfig(n_steps=128, policy_layers=(32,), value_layers=(16,))
 
 
+class Recorder:
+    """Stands in for the coordinator: keeps what the learner publishes."""
+
+    def __init__(self):
+        self.published = []
+
+    def publish(self, weights):
+        self.published.append(weights)
+
+
 def played_by(service):
     return rollout_from_proto(rollout_to_proto(play(service.model), "actor-a", service.version))
 
@@ -34,7 +44,7 @@ def optimizer_tensors(service):
 
 
 def test_without_a_checkpoint_folder_it_starts_fresh_and_saves_nothing(tmp_path):
-    service = LearnerService(CONFIG)
+    service = LearnerService(CONFIG, Recorder())
     train_one_round(service, seed=0)
 
     assert service.version == 1
@@ -42,27 +52,28 @@ def test_without_a_checkpoint_folder_it_starts_fresh_and_saves_nothing(tmp_path)
 
 
 def test_a_restarted_learner_resumes_with_the_same_weights_and_optimizer(tmp_path):
-    first = LearnerService(CONFIG, checkpoint_dir=str(tmp_path))
+    first = LearnerService(CONFIG, Recorder(), checkpoint_dir=str(tmp_path))
     train_one_round(first, seed=0)
 
-    resumed = LearnerService(CONFIG, checkpoint_dir=str(tmp_path))
+    resumed = LearnerService(CONFIG, Recorder(), checkpoint_dir=str(tmp_path))
 
     assert resumed.version == 1
     assert state_dict_digest(resumed.policy.state_dict()) == state_dict_digest(first.policy.state_dict())
-    assert resumed._weights == first._weights  # what actors get served
+    # What actors get: the resumed learner's first publish is the first one's last.
+    assert resumed.publisher.published[0].state_dict == first.publisher.published[-1].state_dict
     saved, loaded = optimizer_tensors(first), optimizer_tensors(resumed)
     assert saved and len(saved) == len(loaded)
     assert all(th.equal(a, b) for a, b in zip(saved, loaded))
 
 
 def test_resuming_trains_exactly_like_never_stopping(tmp_path):
-    kept_running = LearnerService(CONFIG, checkpoint_dir=str(tmp_path / "a"))
+    kept_running = LearnerService(CONFIG, Recorder(), checkpoint_dir=str(tmp_path / "a"))
     train_one_round(kept_running, seed=0)
-    resumed = LearnerService(CONFIG, checkpoint_dir=str(tmp_path / "b"))
+    resumed = LearnerService(CONFIG, Recorder(), checkpoint_dir=str(tmp_path / "b"))
     checkpoint.restore(resumed.model, checkpoint.load_latest(str(tmp_path / "a")))
     resumed.version = 1
     # Same weights but a fresh optimizer: what we'd get without saving its state.
-    weights_only = LearnerService(CONFIG)
+    weights_only = LearnerService(CONFIG, Recorder())
     weights_only.policy.load_state_dict(kept_running.policy.state_dict())
     weights_only.version = 1
 
@@ -96,15 +107,15 @@ def test_a_half_written_save_is_ignored_then_cleaned_up(tmp_path):
 
 
 def test_a_different_config_is_refused_and_named(tmp_path):
-    train_one_round(LearnerService(CONFIG, checkpoint_dir=str(tmp_path)), seed=0)
+    train_one_round(LearnerService(CONFIG, Recorder(), checkpoint_dir=str(tmp_path)), seed=0)
     changed = TrainingConfig(n_steps=256, gamma=0.9, policy_layers=(32,), value_layers=(16,))
 
     with pytest.raises(checkpoint.ConfigMismatch, match="n_steps.*gamma"):
-        LearnerService(changed, checkpoint_dir=str(tmp_path))
+        LearnerService(changed, Recorder(), checkpoint_dir=str(tmp_path))
 
 
 def test_the_checkpoint_is_on_disk_before_actors_can_get_the_version(tmp_path, monkeypatch):
-    service = LearnerService(CONFIG, checkpoint_dir=str(tmp_path))
+    service = LearnerService(CONFIG, Recorder(), checkpoint_dir=str(tmp_path))
     published_when_saved = []
     save = checkpoint.save_checkpoint
 

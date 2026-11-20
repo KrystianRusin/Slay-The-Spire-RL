@@ -19,6 +19,10 @@ MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 GRPC_OPTIONS = [
     ("grpc.max_send_message_length", MAX_MESSAGE_BYTES),
     ("grpc.max_receive_message_length", MAX_MESSAGE_BYTES),
+    # While a server is down, a client channel waits longer and longer between
+    # attempts to reconnect, by default up to 2 minutes. Capped, a service that
+    # comes back is found again within seconds however long it was gone.
+    ("grpc.max_reconnect_backoff_ms", 5000),
 ]
 
 # Rollout message field -> CustomRolloutBuffer attribute.

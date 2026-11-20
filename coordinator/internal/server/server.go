@@ -53,3 +53,8 @@ func (t *Trainer) PublishWeights(ctx context.Context, w *stsv1.Weights) (*stsv1.
 	}
 	return &stsv1.PublishAck{Replaced: replaced}, nil
 }
+
+func (t *Trainer) CurrentVersion(ctx context.Context, _ *stsv1.CurrentVersionRequest) (*stsv1.WeightsVersion, error) {
+	version, runID := t.Store.Version()
+	return &stsv1.WeightsVersion{Version: version, RunId: runID}, nil
+}

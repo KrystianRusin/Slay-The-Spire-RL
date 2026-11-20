@@ -1,12 +1,11 @@
 """The Go coordinator, driven from Python through the generated stubs.
 
-Starts the real binary (built into the game image at /opt/sts/bin/coordinator,
-or wherever COORDINATOR_BIN points), so this checks the Go service and the
-Python side agree on the contract. The Go logic has its own tests in coordinator/.
+Starts the real binary (see tests/stack.py), so this checks the Go service and
+the Python side agree on the contract. The Go logic has its own tests in
+coordinator/.
 """
 import os
 import signal
-import subprocess
 import threading
 import time
 
@@ -20,29 +19,22 @@ from rpc import learner_pb2 as pb  # noqa: E402
 from rpc import learner_pb2_grpc  # noqa: E402
 from rpc.codec import (GRPC_OPTIONS, config_from_proto, config_to_proto,  # noqa: E402
                        decode_state_dict, encode_state_dict, state_dict_digest)
+from tests.stack import COORDINATOR_BIN, LONG_POLL_SECONDS, Coordinator  # noqa: E402
 
-BINARY = os.environ.get("COORDINATOR_BIN", "/opt/sts/bin/coordinator")
-LONG_POLL_SECONDS = 0.5
 CONFIG = TrainingConfig(n_steps=16, policy_layers=(32,), value_layers=(16,))
 
-if not os.path.exists(BINARY):
-    pytest.skip(f"no coordinator binary at {BINARY}", allow_module_level=True)
+if not os.path.exists(COORDINATOR_BIN):
+    pytest.skip(f"no coordinator binary at {COORDINATOR_BIN}", allow_module_level=True)
 
 
 @pytest.fixture
 def coordinator():
-    """A running coordinator on a free port: (process, actors stub, trainer stub)."""
-    process = subprocess.Popen(
-        [BINARY], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-        env={**os.environ, "COORDINATOR_PORT": "0", "COORDINATOR_LONG_POLL_SECONDS": str(LONG_POLL_SECONDS)})
-    line = process.stdout.readline()
-    assert "listening on port" in line, line
-    port = int(line.rsplit(" ", 1)[1])
-    channel = grpc.insecure_channel(f"localhost:{port}", options=GRPC_OPTIONS)
-    yield process, learner_pb2_grpc.ActorsStub(channel), learner_pb2_grpc.TrainerStub(channel)
+    """A running coordinator on a free port: (Coordinator, actors stub, trainer stub)."""
+    running = Coordinator()
+    channel = grpc.insecure_channel(running.address, options=GRPC_OPTIONS)
+    yield running, learner_pb2_grpc.ActorsStub(channel), learner_pb2_grpc.TrainerStub(channel)
     channel.close()
-    process.kill()
-    process.wait()
+    running.kill()
 
 
 def weights(version, run_id, model=None):
@@ -119,10 +111,21 @@ def test_weights_without_a_config_are_refused(coordinator):
     assert error.value.code() == grpc.StatusCode.INVALID_ARGUMENT
 
 
+def test_it_reports_which_version_it_holds(coordinator):
+    _, _, trainer = coordinator
+    empty = trainer.CurrentVersion(pb.CurrentVersionRequest())
+
+    trainer.PublishWeights(weights(4, "run-a"))
+    held = trainer.CurrentVersion(pb.CurrentVersionRequest())
+
+    assert (empty.version, empty.run_id) == (0, "")
+    assert (held.version, held.run_id) == (4, "run-a")
+
+
 def test_it_stops_cleanly_on_sigterm(coordinator):
-    process, _, _ = coordinator
+    running, _, _ = coordinator
 
-    process.send_signal(signal.SIGTERM)
+    running.process.send_signal(signal.SIGTERM)
 
-    assert process.wait(timeout=5) == 0
-    assert "stopping" in process.stdout.read()
+    assert running.wait(timeout=5) == 0
+    assert any("stopping" in line for line in running.log)

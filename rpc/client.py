@@ -1,4 +1,4 @@
-"""The actor's side of learner.proto."""
+"""The actor's side of learner.proto: weights come from the coordinator, rollouts go to the learner."""
 import time
 
 import grpc
@@ -7,11 +7,11 @@ from rpc import learner_pb2 as pb
 from rpc import learner_pb2_grpc
 from rpc.codec import GRPC_OPTIONS, config_from_proto, decode_state_dict, rollout_to_proto
 
-# How long one call may take. Longer than the learner's long poll (30 s), and
-# while the learner is unreachable a call waits this long for it to come back.
+# How long one call may take. Longer than the coordinator's long poll (30 s),
+# and while a service is unreachable a call waits this long for it to come back.
 CALL_TIMEOUT = 60
 
-# The learner is down or restarting: wait and try again rather than crash.
+# The service is down or restarting: wait and try again rather than crash.
 RETRY_CODES = (grpc.StatusCode.UNAVAILABLE, grpc.StatusCode.DEADLINE_EXCEEDED)
 RETRY_FIRST_SECONDS = 1
 RETRY_MAX_SECONDS = 10
@@ -22,39 +22,40 @@ class LearnerRestartedWithNewConfig(Exception):
 
 
 class LearnerClient:
-    """Fetches weights from the learner and submits rollouts to it.
+    """Fetches weights from the coordinator and submits rollouts to the learner.
 
     Has the same put() as the experience queue run_environment expects, so the
     actor hands it finished rollouts without knowing they leave the process.
 
-    Calls ride out the learner going away: they are retried until it is back.
+    Calls ride out either service going away: they are retried until it is back.
     """
 
-    def __init__(self, address, actor_id):
+    def __init__(self, coordinator_address, learner_address, actor_id):
         self.actor_id = actor_id
-        self.channel = grpc.insecure_channel(address, options=GRPC_OPTIONS)
-        self.stub = learner_pb2_grpc.LearnerStub(self.channel)
+        self.coordinator = learner_pb2_grpc.ActorsStub(
+            grpc.insecure_channel(coordinator_address, options=GRPC_OPTIONS))
+        self.stub = learner_pb2_grpc.LearnerStub(grpc.insecure_channel(learner_address, options=GRPC_OPTIONS))
         self.version = None  # the version of the weights last fetched
         self.config = None  # the config they came with
         self.run_id = ""  # the learner process they came from
         self.last_accepted = False  # whether the last submitted rollout was accepted
 
-    def _call(self, method, request):
-        """method(request), retried with backoff for as long as the learner is unreachable."""
+    def _call(self, method, request, service):
+        """method(request), retried with backoff for as long as service is unreachable."""
         delay = RETRY_FIRST_SECONDS
         while True:
             try:
-                # wait_for_ready: while the learner is down, wait for it instead of failing at once.
+                # wait_for_ready: while the service is down, wait for it instead of failing at once.
                 return method(request, timeout=CALL_TIMEOUT, wait_for_ready=True)
             except grpc.RpcError as e:
                 if e.code() not in RETRY_CODES:
                     raise
-                print(f"learner unreachable ({e.code().name}), retrying in {delay}s", flush=True)
+                print(f"{service} unreachable ({e.code().name}), retrying in {delay}s", flush=True)
                 time.sleep(delay)
                 delay = min(delay * 2, RETRY_MAX_SECONDS)
 
     def get_weights(self, min_version=0):
-        """Fetch the learner's policy, waiting until it has at least min_version.
+        """Fetch the learner's policy from the coordinator, waiting until it is at least min_version.
 
         If the learner restarted since the last fetch, returns its current
         weights straight away, whatever min_version was. Returns
@@ -63,10 +64,10 @@ class LearnerClient:
         while True:
             request = pb.GetWeightsRequest(actor_id=self.actor_id, min_version=min_version,
                                            run_id=self.run_id)
-            reply = self._call(self.stub.GetWeights, request)
+            reply = self._call(self.coordinator.GetWeights, request, "coordinator")
             if reply.HasField("config"):
                 break
-            # The learner held the call as long as it would; ask again.
+            # The coordinator held the call as long as it would; ask again.
         config = config_from_proto(reply.config)
         if self.run_id and reply.run_id != self.run_id:
             print(f"learner restarted (run {self.run_id} -> {reply.run_id}), "
@@ -82,7 +83,7 @@ class LearnerClient:
         if self.version is None:
             raise RuntimeError("get_weights() must be called before submitting rollouts")
         message = rollout_to_proto(rollout, self.actor_id, self.version)
-        ack = self._call(self.stub.SubmitRollout, message)
+        ack = self._call(self.stub.SubmitRollout, message, "learner")
         self.last_accepted = ack.accepted
         if ack.accepted:
             # If the learner restarted, this rollout is in the new one's round, so

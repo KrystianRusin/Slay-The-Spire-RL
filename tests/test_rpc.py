@@ -1,4 +1,5 @@
-"""The actor <-> learner contract: message encoding and a real in-process gRPC server.
+"""The actor <-> learner contract: message encoding, and a real learner and
+coordinator with actors talking to them.
 
 Needs the code generated from rpc/learner.proto, which the image build creates.
 """
@@ -12,14 +13,13 @@ import torch as th
 pytest.importorskip("rpc.learner_pb2", reason="generate it from rpc/learner.proto first")
 
 import learner_server  # noqa: E402
-from learner_server import LearnerService, serve  # noqa: E402
 from model.policy import TrainingConfig, make_model  # noqa: E402
 from rpc import learner_pb2 as pb  # noqa: E402
-from rpc.client import LearnerClient  # noqa: E402
 from rpc.codec import (BUFFER_FIELDS, config_from_proto, config_to_proto,  # noqa: E402
                        decode_state_dict, encode_state_dict, rollout_from_proto,
                        rollout_to_proto, state_dict_digest)
 from tests.rollouts import fill, make_buffer, mask_for, play  # noqa: E402
+from tests.stack import LONG_POLL_SECONDS, stack, wait_until_published  # noqa: E402,F401
 
 
 @pytest.fixture
@@ -89,19 +89,13 @@ LEARNER_CONFIG = TrainingConfig(n_steps=256, gamma=0.9, policy_layers=(32,), val
 
 
 @pytest.fixture
-def start_learner():
-    """Starts real learners on free ports. The training thread is up to each test."""
-    servers = []
-
+def start_learner(stack):
+    """Starts real learners, publishing to a real coordinator. The training thread is up to each test."""
     def start(num_actors=1):
-        service = LearnerService(LEARNER_CONFIG, num_actors)
-        server, port = serve(service, 0)
-        servers.append(server)
-        return service, lambda actor_id: LearnerClient(f"localhost:{port}", actor_id)
+        service, port = stack.start_learner(LEARNER_CONFIG, num_actors)
+        return service, lambda actor_id: stack.client(actor_id, port)
 
-    yield start
-    for server in servers:
-        server.stop(grace=None)
+    return start
 
 
 @pytest.fixture
@@ -112,10 +106,12 @@ def learner(start_learner):
 
 
 def wait_for_version(service, version, timeout=60):
+    """Until the learner has trained up to version and the coordinator holds it."""
     deadline = time.monotonic() + timeout
     while service.version < version:
         assert time.monotonic() < deadline, f"learner never reached v{version}"
         time.sleep(0.01)
+    wait_until_published(service, version)
 
 
 def test_an_actor_gets_the_learners_exact_weights(learner):
@@ -298,9 +294,17 @@ def test_the_first_ratio_is_not_1_when_the_actor_played_with_other_weights(start
     service, connect = start_learner()
     service.start_training()
     client = connect("actor-a")
-    _, config, _ = client.get_weights()
+    _, config, state_dict = client.get_weights()
+    other = make_model(config)
+    other.policy.load_state_dict(state_dict)
+    # Shift the action logits so the two policies surely disagree. Two fresh
+    # random networks can by chance be within 1% of each other here.
+    generator = th.Generator().manual_seed(0)
+    with th.no_grad():
+        for parameter in other.policy.action_net.parameters():
+            parameter.add_(th.randn(parameter.shape, generator=generator))
 
-    client.put(play(make_model(config)))  # fresh random weights, the bug this phase fixes
+    client.put(play(other))
     wait_for_version(service, 1)
 
     assert service.last_stats.first_ratio_error_max > 1e-2
@@ -338,7 +342,6 @@ def test_an_actor_waits_for_the_version_its_rollout_goes_into(start_learner, rol
 
 def test_waiting_outlasts_the_long_poll_by_asking_again(start_learner, rollout):
     service, connect = start_learner(num_actors=2)
-    service.long_poll_seconds = 0.2
     service.start_training()
     first, second = connect("actor-a"), connect("actor-b")
     first.get_weights()
@@ -348,7 +351,7 @@ def test_waiting_outlasts_the_long_poll_by_asking_again(start_learner, rollout):
     waiter = threading.Thread(target=lambda: got.setdefault("weights", first.next_weights()))
     waiter.start()
 
-    time.sleep(1)  # several long polls come back empty meanwhile
+    time.sleep(LONG_POLL_SECONDS * 4)  # several long polls come back empty meanwhile
     assert "weights" not in got
     second.put(rollout)
     waiter.join(timeout=30)
@@ -367,29 +370,3 @@ def test_after_a_rejected_rollout_the_actor_takes_the_current_version(start_lear
     client.next_weights()  # doesn't wait for v8
 
     assert client.version == 0
-
-
-def test_actors_waiting_for_weights_dont_starve_the_round_of_threads(start_learner, rollout):
-    """More actors waiting than gRPC's usual 8 worker threads, then the last one submits."""
-    actors = 12
-    service, connect = start_learner(num_actors=actors)
-    service.long_poll_seconds = 120  # so a starved server can't be rescued by a poll timing out
-    service.start_training()
-    clients = [connect(f"actor-{i}") for i in range(actors)]
-    for client in clients:
-        client.get_weights()
-    for client in clients[:-1]:
-        client.put(rollout)
-    waiters = [threading.Thread(target=client.next_weights) for client in clients[:-1]]
-    for waiter in waiters:
-        waiter.start()
-    time.sleep(0.5)  # every waiter is now holding a server thread inside GetWeights
-
-    last = rollout_to_proto(rollout, clients[-1].actor_id, 0)
-    ack = clients[-1].stub.SubmitRollout(last, timeout=10)  # needs a free server thread
-    for waiter in waiters:
-        waiter.join(timeout=30)
-
-    assert ack.accepted
-    assert [client.version for client in clients[:-1]] == [1] * (actors - 1)
-    assert service.last_stats.steps == 16 * actors

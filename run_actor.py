@@ -1,8 +1,9 @@
 """Run one actor: play the game through the middleman and hand off rollouts.
 
-With LEARNER_ADDR set, the actor fetches its starting weights from the learner,
-submits each finished rollout to it over gRPC, and then waits for the learner's
-next version before playing the next rollout. Without it,
+With LEARNER_ADDR and COORDINATOR_ADDR set, the actor fetches its starting
+weights from the coordinator, submits each finished rollout to the learner over
+gRPC, and then waits at the coordinator for the learner's next version before
+playing the next rollout. Without LEARNER_ADDR,
 rollouts go to a stand-in that logs and drops them, so the actor can be
 tested with no learner running.
 
@@ -10,7 +11,7 @@ The learner also sends the TrainingConfig (rollout length, gamma, network
 shape), so the actor has no settings of its own. With no learner it uses the
 defaults in model/policy.py.
 
-Env: LEARNER_ADDR (host:port), STS_MIDDLEMAN_PORT [9999], STS_ACTOR_ID [hostname].
+Env: LEARNER_ADDR and COORDINATOR_ADDR (host:port), STS_MIDDLEMAN_PORT [9999], STS_ACTOR_ID [hostname].
 """
 import os
 import socket
@@ -49,9 +50,12 @@ def main():
         from rpc.client import LearnerClient
         from rpc.codec import state_dict_digest
 
-        sink = LearnerClient(learner_address, actor_id)
+        coordinator_address = os.environ.get("COORDINATOR_ADDR")
+        if not coordinator_address:
+            raise SystemExit("COORDINATOR_ADDR must be set with LEARNER_ADDR: weights come from the coordinator")
+        sink = LearnerClient(coordinator_address, learner_address, actor_id)
         version, config, initial_state_dict = sink.get_weights()
-        print(f"actor {actor_id}: loaded weights v{version} from {learner_address}, "
+        print(f"actor {actor_id}: loaded weights v{version} from {coordinator_address}, "
               f"sha={state_dict_digest(initial_state_dict)}, {config}", flush=True)
 
         def next_weights():

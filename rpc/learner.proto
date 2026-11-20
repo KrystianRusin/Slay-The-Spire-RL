@@ -1,7 +1,8 @@
 // The contract between actors and the learner.
 //
-// Actors play the game and send experience up; the learner trains and sends
-// weights down. Python code is generated from this file at image build time
+// Actors play the game and send experience to the learner, which trains on it.
+// The learner publishes each new version of the weights to the coordinator,
+// and actors fetch them from there. Python code is generated from this file at image build time
 // (see docker/game/Dockerfile), and the Go coordinator's code too
 // (docker/coordinator/Dockerfile).
 syntax = "proto3";
@@ -13,8 +14,8 @@ option go_package = "sts/coordinator/gen/stsv1;stsv1";
 
 // Served by the Go coordinator: what actors call.
 service Actors {
-  // The current policy, with the same long poll as Learner.GetWeights below:
-  // wait for min_version, unless the learner restarted (run_id changed).
+  // The current policy. An actor calls this at startup, and after every
+  // rollout with min_version set to wait for the next one (a long poll).
   rpc GetWeights(GetWeightsRequest) returns (Weights);
 }
 
@@ -23,18 +24,27 @@ service Trainer {
   // Make these the weights actors get. The newest publish wins; publishing the
   // same version and run_id again is a no-op, so the learner can repeat it.
   rpc PublishWeights(Weights) returns (PublishAck);
+
+  // Which weights the coordinator holds: their version and run_id, without the
+  // weights themselves. The coordinator keeps the weights only in memory, so
+  // after it restarts it has none. The learner calls this every few seconds
+  // and publishes again if the answer isn't what it last published.
+  rpc CurrentVersion(CurrentVersionRequest) returns (WeightsVersion);
 }
 
 message PublishAck {
   bool replaced = 1;  // false if the coordinator already had exactly this version
 }
 
+message CurrentVersionRequest {}
+
+message WeightsVersion {
+  int64 version = 1;
+  string run_id = 2;  // empty if nothing has been published since the coordinator started
+}
+
 // Served by the Python learner.
 service Learner {
-  // The current policy. An actor calls this at startup, and after every
-  // rollout with min_version set to wait for the next one (a long poll).
-  rpc GetWeights(GetWeightsRequest) returns (Weights);
-
   // One finished rollout: n_steps of experience made with policy_version.
   rpc SubmitRollout(Rollout) returns (SubmitAck);
 }
@@ -48,13 +58,13 @@ message Tensor {
 
 message GetWeightsRequest {
   string actor_id = 1;
-  // Wait (up to ~30 s) until the learner has at least this version. If it still
+  // Wait (up to ~30 s) until the coordinator has at least this version. If it still
   // doesn't, the reply has only the current version and no weights: ask again.
   // 0 means don't wait.
   int64 min_version = 2;
   // The run_id of the learner this actor last got weights from, empty at first.
-  // If the learner has restarted since, it ignores min_version and answers at
-  // once with its current weights: the version being waited for may never come.
+  // If the learner has restarted since, min_version is ignored and the reply
+  // comes at once with the current weights: the version being waited for may never come.
   string run_id = 3;
 }
 

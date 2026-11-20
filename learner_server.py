@@ -2,14 +2,15 @@
 
 Each round, it collects one rollout per actor for the current version. Once it
 has LEARNER_NUM_ACTORS of them, a background thread concatenates them, runs one
-PPO update, and publishes the next version. Actors wait for that version with a
-long poll (GetWeights with min_version) before playing their next rollout.
+PPO update, and publishes the next version to the coordinator at
+COORDINATOR_ADDR. Actors wait there for that version before playing their next
+rollout, so the learner sends its weights once however many actors there are.
 
 After every update it saves a checkpoint to LEARNER_CHECKPOINT_DIR (if set),
 and on startup it resumes from the newest one there.
 
-Env: LEARNER_PORT [50051], LEARNER_NUM_ACTORS [1], LEARNER_N_STEPS [from TrainingConfig],
-LEARNER_CHECKPOINT_DIR [unset: no checkpoints].
+Env: COORDINATOR_ADDR (host:port), LEARNER_PORT [50051], LEARNER_NUM_ACTORS [1],
+LEARNER_N_STEPS [from TrainingConfig], LEARNER_CHECKPOINT_DIR [unset: no checkpoints].
 """
 import dataclasses
 import os
@@ -29,6 +30,7 @@ from model.model_utils import train
 from model.policy import TrainingConfig, make_model
 from rpc import learner_pb2 as pb
 from rpc import learner_pb2_grpc
+from rpc.publisher import WeightsPublisher
 from rpc.codec import (BUFFER_FIELDS, GRPC_OPTIONS, config_to_proto, encode_state_dict,
                        rollout_from_proto, state_dict_digest)
 
@@ -36,11 +38,6 @@ def log(message):
     """One line to stdout in a single write, so lines from different threads don't interleave."""
     sys.stdout.write(message + "\n")
     sys.stdout.flush()
-
-
-# The longest GetWeights holds a call open waiting for min_version. Short enough
-# to stay well inside the client's call timeout; the client just asks again.
-LONG_POLL_SECONDS = 30
 
 
 def check_matches_model(rollout, model):
@@ -80,8 +77,10 @@ def merge_rollouts(rollouts, model):
 
 
 class LearnerService(learner_pb2_grpc.LearnerServicer):
-    def __init__(self, config, num_actors=1, checkpoint_dir=None):
+    def __init__(self, config, publisher, num_actors=1, checkpoint_dir=None):
+        """publisher: anything with publish(pb.Weights), normally a WeightsPublisher."""
         self.config = config
+        self.publisher = publisher
         self.num_actors = num_actors
         self.checkpoint_dir = checkpoint_dir
         self.model = make_model(config)
@@ -89,12 +88,9 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         self.version = 0
         self.run_id = uuid.uuid4().hex[:12]  # tells actors this learner process from earlier ones
         resumed_from = self._resume() if checkpoint_dir else None
-        self._weights = encode_state_dict(self.policy.state_dict())
         self._config = config_to_proto(config)
         self._lock = threading.Lock()  # gRPC serves calls on a thread pool
         self._round_full = threading.Condition(self._lock)
-        self._new_version = threading.Condition(self._lock)
-        self.long_poll_seconds = LONG_POLL_SECONDS
         self._pool = {}  # actor_id -> its rollout for the current version
         self.accepted = 0
         self.rejected = 0
@@ -103,9 +99,9 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         self._first_arrival = None  # when the current round's first rollout came in
         if resumed_from:
             log(f"learner: resumed from {resumed_from}")
-        log(f"learner: serving weights v{self.version}, "
-              f"sha={state_dict_digest(self.policy.state_dict())}, {len(self._weights) / 1e6:.2f} MB, "
-              f"waiting for {num_actors} actor(s) per round, run_id={self.run_id}")
+        log(f"learner: starting at v{self.version}, sha={state_dict_digest(self.policy.state_dict())}, "
+            f"waiting for {num_actors} actor(s) per round, run_id={self.run_id}")
+        self.publisher.publish(self._weights_message())
 
     def _resume(self):
         """Load the newest checkpoint, if any. Returns its path, or None for a fresh start."""
@@ -118,21 +114,10 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
         self.version = state["version"]
         return state["path"]
 
-    def GetWeights(self, request, context):
-        # An actor that knew an earlier learner process may be waiting for a version
-        # that died with it (its rollout was in the lost pool), so don't make it wait.
-        restarted = request.run_id not in ("", self.run_id)
-        min_version = 0 if restarted else request.min_version
-        with self._lock:
-            # Releases the lock while waiting, so rollouts and training carry on.
-            self._new_version.wait_for(lambda: self.version >= min_version,
-                                       timeout=self.long_poll_seconds)
-            if self.version < min_version:
-                return pb.Weights(version=self.version, run_id=self.run_id)  # not yet: ask again
-            log(f"learner: actor {request.actor_id} fetched weights v{self.version}"
-                + (f" (it last saw learner run {request.run_id})" if restarted else ""))
-            return pb.Weights(version=self.version, state_dict=self._weights, config=self._config,
-                              run_id=self.run_id)
+    def _weights_message(self):
+        """The current weights as a message for the coordinator."""
+        return pb.Weights(version=self.version, state_dict=encode_state_dict(self.policy.state_dict()),
+                          config=self._config, run_id=self.run_id)
 
     def SubmitRollout(self, request, context):
         try:
@@ -194,12 +179,10 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
             os._exit(1)
 
     def _train_round(self, rollouts):
-        # Outside the lock, so actors can still fetch weights during the update. The
-        # full pool refuses new rollouts, and GetWeights serves the cached bytes of
-        # the old version, which only change below, together with the version number.
+        # Outside the lock, so rollouts are still answered during the update: the
+        # pool is full, so they're refused until the version below changes.
         started = time.monotonic()
         stats = train(self.model, merge_rollouts(rollouts, self.model))
-        weights = encode_state_dict(self.policy.state_dict())
         if self.checkpoint_dir:
             # Saved before it is published: once an actor can play with a version,
             # a restarted learner resumes at that version, not the one before.
@@ -207,15 +190,14 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
 
         with self._lock:
             self.version += 1
-            self._weights = weights
             self._pool = {}
             self.last_stats = stats
             version = self.version
-            self._new_version.notify_all()  # wake every actor waiting for this version
             now = time.monotonic()
             round_seconds = now - self._round_started  # publish to publish (round 1: from startup)
             spread = self._last_arrival - self._first_arrival
             self._round_started = now
+        self.publisher.publish(self._weights_message())
         log(f"learner: trained v{version - 1} -> v{version} on {stats.steps} steps from "
               f"{len(rollouts)} actor(s) in {time.monotonic() - started:.1f}s, "
               f"sha={state_dict_digest(self.policy.state_dict())}, "
@@ -232,9 +214,8 @@ class LearnerService(learner_pb2_grpc.LearnerServicer):
 
 def serve(service, port):
     """Start a gRPC server for service on port. Returns the server, already running."""
-    # Every actor waiting for new weights holds a worker thread, so there must be
-    # spare ones for the SubmitRollout that completes the round.
-    workers = futures.ThreadPoolExecutor(max_workers=service.num_actors + 8)
+    # Enough threads for every actor to submit at once.
+    workers = futures.ThreadPoolExecutor(max_workers=service.num_actors + 2)
     server = grpc.server(workers, options=GRPC_OPTIONS)
     learner_pb2_grpc.add_LearnerServicer_to_server(service, server)
     bound = server.add_insecure_port(f"[::]:{port}")
@@ -243,6 +224,9 @@ def serve(service, port):
 
 
 def main():
+    coordinator_address = os.environ.get("COORDINATOR_ADDR")
+    if not coordinator_address:
+        sys.exit("learner: COORDINATOR_ADDR must be set: actors get the weights from the coordinator")
     port = int(os.environ.get("LEARNER_PORT", "50051"))
     num_actors = int(os.environ.get("LEARNER_NUM_ACTORS") or 1)
     config = TrainingConfig()
@@ -250,7 +234,8 @@ def main():
         config = dataclasses.replace(config, n_steps=int(os.environ["LEARNER_N_STEPS"]))
 
     try:
-        service = LearnerService(config, num_actors, os.environ.get("LEARNER_CHECKPOINT_DIR") or None)
+        service = LearnerService(config, WeightsPublisher(coordinator_address), num_actors,
+                                 os.environ.get("LEARNER_CHECKPOINT_DIR") or None)
     except checkpoint.ConfigMismatch as e:
         log(f"learner: refusing to resume, the newest checkpoint has a different config: {e}\n"
             f"learner: to start a new run, move the checkpoint folder away")
