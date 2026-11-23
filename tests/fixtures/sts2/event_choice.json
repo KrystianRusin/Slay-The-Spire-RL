@@ -1,0 +1,281 @@
+{
+  "type": "decision",
+  "decision": "event_choice",
+  "context": {
+    "act": 1,
+    "act_name": "Overgrowth",
+    "floor": 1,
+    "room_type": "Event",
+    "boss": {
+      "id": "CEREMONIAL_BEAST_BOSS",
+      "name": "Ceremonial Beast"
+    }
+  },
+  "event_name": "Neow",
+  "description": null,
+  "options": [
+    {
+      "index": 0,
+      "title": "Kaleidoscope",
+      "description": "Upon pickup, obtain {Cards} {Cards:plural:card reward|card rewards} from other characters.",
+      "text_key": "NEOW.pages.INITIAL.options.KALEIDOSCOPE",
+      "is_locked": false,
+      "vars": {
+        "Cards": 2
+      }
+    },
+    {
+      "index": 1,
+      "title": "Scroll Boxes",
+      "description": "Upon pickup, choose 1 of 2 packs of cards to add to your Deck.",
+      "text_key": "NEOW.pages.INITIAL.options.SCROLL_BOXES",
+      "is_locked": false,
+      "vars": null
+    },
+    {
+      "index": 2,
+      "title": "Neow's Bones",
+      "description": "Upon pickup, gain {Relics} random Neow {Relics:plural:Relic|Relics}. Add {Curses} random {Curses:plural:Curse|Curses} to your Deck.",
+      "text_key": "NEOW.pages.INITIAL.options.NEOWS_BONES",
+      "is_locked": false,
+      "vars": {
+        "Relics": 2,
+        "Curses": 1
+      }
+    }
+  ],
+  "player": {
+    "name": "The Necrobinder",
+    "hp": 66,
+    "max_hp": 66,
+    "block": 0,
+    "gold": 99,
+    "relics": [
+      {
+        "name": "Bound Phylactery",
+        "description": "At the start of your turn, Summon {Summon}.",
+        "vars": {
+          "Summon": 1
+        }
+      }
+    ],
+    "potions": [],
+    "deck_size": 10,
+    "deck": [
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.BODYGUARD",
+        "name": "Bodyguard",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Summon {Summon:diff()}.",
+        "stats": {
+          "summon": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "summon": 7
+          },
+          "description": "Summon {Summon:diff()}.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.UNLEASH",
+        "name": "Unleash",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Osty deals {CalculatedDamage:diff()} damage.\nDeals additional damage equal to Osty's current HP.",
+        "stats": {
+          "calculationbase": 6,
+          "extradamage": 1,
+          "calculateddamage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "calculationbase": 9,
+            "extradamage": 1,
+            "calculateddamage": 9
+          },
+          "description": "Osty deals {CalculatedDamage:diff()} damage.\nDeals additional damage equal to Osty's current HP.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      }
+    ]
+  }
+}

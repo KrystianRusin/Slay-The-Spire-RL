@@ -15,10 +15,10 @@ ROUNDS=${1:-2}
 shift || true
 COUNTS=${*:-1 2 4}
 ROUND_TIMEOUT=${ROUND_TIMEOUT:-1800}  # seconds; a dead actor stalls a round forever
-COMPOSE=(docker compose -f compose.yaml -f compose.norender.yaml)
+COMPOSE=(docker compose)
 export LEARNER_N_STEPS=${LEARNER_N_STEPS:-}  # empty: full rounds. Set it for a quick try.
 
-mkdir -p run/actors run/learner run/throughput
+mkdir -p run/sts2-actors run/sts2-learner run/throughput
 OUT="run/throughput/$(date +%Y%m%d-%H%M%S).txt"
 
 report() { echo "$*" | tee -a "$OUT"; }
@@ -27,7 +27,7 @@ round_lines() { docker compose logs learner 2>/dev/null | grep -o 'round for v.*
 report "throughput, $ROUNDS measured round(s) per count, actor counts: $COUNTS, $(nproc) cores"
 for n in $COUNTS; do
   "${COMPOSE[@]}" down >/dev/null 2>&1 || true
-  rm -rf run/learner/checkpoints
+  rm -rf run/sts2-learner/checkpoints
   NUM_ACTORS=$n "${COMPOSE[@]}" up -d learner actor >/dev/null 2>&1
   report ""
   report "== $n actor(s), started $(date +%T)"

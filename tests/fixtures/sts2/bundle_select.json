@@ -1,0 +1,337 @@
+{
+  "type": "decision",
+  "decision": "bundle_select",
+  "context": {
+    "act": 1,
+    "act_name": "Overgrowth",
+    "floor": 1,
+    "room_type": "Event",
+    "boss": {
+      "id": "CEREMONIAL_BEAST_BOSS",
+      "name": "Ceremonial Beast"
+    }
+  },
+  "bundles": [
+    {
+      "index": 0,
+      "cards": [
+        {
+          "name": "Invoke",
+          "cost": 1,
+          "type": "Skill",
+          "rarity": "Common",
+          "description": "Next turn, Summon {Summon:diff()} and gain {Energy:energyIcons()}.",
+          "stats": {
+            "summon": 2,
+            "energy": 2
+          },
+          "keywords": null
+        },
+        {
+          "name": "Snap",
+          "cost": 1,
+          "type": "Attack",
+          "rarity": "Common",
+          "description": "Osty deals {OstyDamage:diff()} damage.\nAdd Retain to a card in your Hand.",
+          "stats": {
+            "ostydamage": 7
+          },
+          "keywords": null
+        },
+        {
+          "name": "Melancholy",
+          "cost": 3,
+          "type": "Skill",
+          "rarity": "Uncommon",
+          "description": "Gain {Block:diff()} Block.\nReduce this card's cost by {Energy:energyIcons()} whenever ANYONE dies.",
+          "stats": {
+            "block": 13,
+            "energy": 1
+          },
+          "keywords": null
+        }
+      ]
+    },
+    {
+      "index": 1,
+      "cards": [
+        {
+          "name": "Reave",
+          "cost": 1,
+          "type": "Attack",
+          "rarity": "Common",
+          "description": "Deal {Damage:diff()} damage.\nAdd a {IfUpgraded:show:Soul+|Soul} into your Draw Pile.",
+          "stats": {
+            "damage": 10,
+            "cards": 1
+          },
+          "keywords": null
+        },
+        {
+          "name": "Afterlife",
+          "cost": 1,
+          "type": "Skill",
+          "rarity": "Common",
+          "description": "Summon {Summon:diff()}.",
+          "stats": {
+            "summon": 6
+          },
+          "keywords": [
+            "Exhaust"
+          ]
+        },
+        {
+          "name": "Danse Macabre",
+          "cost": 1,
+          "type": "Power",
+          "rarity": "Uncommon",
+          "description": "Whenever you play a card that costs {Energy:energyIcons()} or more, gain {DanseMacabrePower:diff()} Block.",
+          "stats": {
+            "dansemacabrepower": 4,
+            "energy": 2
+          },
+          "keywords": null
+        }
+      ]
+    }
+  ],
+  "player": {
+    "name": "The Necrobinder",
+    "hp": 66,
+    "max_hp": 66,
+    "block": 0,
+    "gold": 99,
+    "relics": [
+      {
+        "name": "Bound Phylactery",
+        "description": "At the start of your turn, Summon {Summon}.",
+        "vars": {
+          "Summon": 1
+        }
+      },
+      {
+        "name": "Scroll Boxes",
+        "description": "Upon pickup, choose 1 of 2 packs of cards to add to your Deck.",
+        "vars": null
+      }
+    ],
+    "potions": [],
+    "deck_size": 10,
+    "deck": [
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.BODYGUARD",
+        "name": "Bodyguard",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Summon {Summon:diff()}.",
+        "stats": {
+          "summon": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "summon": 7
+          },
+          "description": "Summon {Summon:diff()}.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.UNLEASH",
+        "name": "Unleash",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Osty deals {CalculatedDamage:diff()} damage.\nDeals additional damage equal to Osty's current HP.",
+        "stats": {
+          "calculationbase": 6,
+          "extradamage": 1,
+          "calculateddamage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "calculationbase": 9,
+            "extradamage": 1,
+            "calculateddamage": 9
+          },
+          "description": "Osty deals {CalculatedDamage:diff()} damage.\nDeals additional damage equal to Osty's current HP.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      }
+    ]
+  }
+}

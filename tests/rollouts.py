@@ -5,6 +5,7 @@ import torch as th
 from gymnasium import spaces
 
 from environment.run_env import act
+from sts2.env import N_ACTIONS
 from model.custom_rollout_buffer import CustomRolloutBuffer
 
 GAMMA = 0.97
@@ -15,7 +16,7 @@ def make_buffer(observation_space, size=8):
     return CustomRolloutBuffer(
         buffer_size=size,
         observation_space=observation_space,
-        action_space=spaces.Discrete(141),
+        action_space=spaces.Discrete(N_ACTIONS),
         device="cpu",
         gamma=GAMMA,
         gae_lambda=GAE_LAMBDA,
@@ -71,7 +72,7 @@ def play(model, size=128):
     for step in range(size):
         obs = {key: th.rand(1, *space.shape, generator=generator)
                for key, space in model.observation_space.spaces.items()}
-        mask = mask_for(buffer, (step * 11) % 141)
+        mask = mask_for(buffer, (step * 11) % N_ACTIONS)
         action, value, log_prob = act(model, obs, mask)
         buffer.add(obs, th.tensor(action), float(step % 3), step % 20 == 19, value, log_prob, mask)
     buffer.compute_returns_and_advantage(last_values=th.tensor([[0.0]]), dones=False)

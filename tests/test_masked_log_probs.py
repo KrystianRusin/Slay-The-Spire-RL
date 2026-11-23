@@ -5,6 +5,7 @@ import numpy as np
 import torch as th
 
 from environment.run_env import act
+from sts2.env import N_ACTIONS
 from model.policy import TrainingConfig, make_model
 from tests.rollouts import make_buffer
 
@@ -16,7 +17,7 @@ def random_obs(observation_space, generator):
             for key, space in observation_space.spaces.items()}
 
 
-def only(actions, n=141):
+def only(actions, n=N_ACTIONS):
     mask = np.zeros(n, dtype=bool)
     mask[actions] = True
     return mask
@@ -52,7 +53,7 @@ def test_the_learner_recomputes_the_actors_log_probs_exactly():
     generator = th.Generator().manual_seed(1)
     for step in range(32):
         obs = random_obs(model.observation_space, generator)
-        mask = only(sorted({step % 141, (7 * step) % 141, 100}))
+        mask = only(sorted({step % N_ACTIONS, (7 * step) % N_ACTIONS, 100}))
         action, value, log_prob = act(model, obs, mask)
         buffer.add(obs, th.tensor(action), 0.0, False, value, log_prob, mask)
 

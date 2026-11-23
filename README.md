@@ -1,184 +1,82 @@
-# Slay the Spire PPO Agent
-
-This project implements a reinforcement learning agent using Maskable Proximal Policy Optimization (PPO) to play the game *Slay the Spire*. The agent interacts with the game via a socket connection through a middleman process, processes the game state, and learns to improve its actions through training.
-
-## Table of Contents
-
-- [Project Overview](#project-overview)
-- [Setup and Installation](#setup-and-installation)
-- [Usage](#usage)
-- [Training the Agent](#training-the-agent)
-- [Observation and Action Spaces](#observation-and-action-spaces)
-- [Reward Function](#reward-function)
-- [Model Checkpointing](#model-checkpointing)
-- [Performance Metrics](#performance-metrics)
-- [Next Steps](#next-steps)
-- [Acknowledgements](#acknowledgements)
-
-## Project Overview
-
-The goal of this project is to train a reinforcement learning agent to play *Slay the Spire* effectively using the PPO algorithm. The agent receives observations from the game, processes them, and selects actions to maximize cumulative rewards.
-
-The game is treated as an environment, where the agent observes the current game state and selects valid actions such as playing cards, using potions, and making choices. The agent's performance improves over time as it receives rewards based on in-game outcomes.
-
-## Setup and Installation
-
-### Prerequisites
-
-- **Python 3.13** (the version this project is developed and tested against)
-- A running PostgreSQL instance
-- *Slay the Spire* (with the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) installed)
-- Optional: an NVIDIA GPU with a CUDA-capable driver, for GPU training
-
-### Installation
-
-1. Clone the repository:
-
-    ```bash
-    git clone https://github.com/KrystianRusin/slAI_the_spire.git
-    cd slAI_the_spire
-    ```
-
-2. Set up a virtual environment:
-
-    ```bash
-    py -3.13 -m venv venv          # On Linux/macOS: python3.13 -m venv venv
-    venv\Scripts\activate          # On Linux/macOS: source venv/bin/activate
-    ```
-
-3. Install the dependencies:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-4. For GPU training, reinstall torch from the PyTorch CUDA index. This step must
-   come **after** step 3: resolving the other packages pulls the CPU wheel from
-   PyPI over the top of a CUDA build, so installing torch first does not stick.
-
-    ```bash
-    pip install --force-reinstall torch --index-url https://download.pytorch.org/whl/cu128
-    ```
-
-   `cu128` suits an Ampere card (RTX 30xx) on a recent driver; pick the index
-   matching your CUDA runtime from [pytorch.org](https://pytorch.org/get-started/locally/).
-   Skipping this step leaves a working CPU build. Verify with:
-
-    ```bash
-    python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
-    ```
-
-5. Install the [Communication Mod](https://github.com/ForgottenArbiter/CommunicationMod) for *Slay the Spire*
-
-6. Copy `.env.example` to `.env` and fill in your database URL:
-
-    ```bash
-    cp .env.example .env           # On Windows: copy .env.example .env
-    ```
-
-   `DATABASE_URL` is the only environment variable the code reads:
-
-    ```
-    DATABASE_URL=postgresql://<username>:<password>@localhost:<port>/<db_name>
-    ```
-
-   Tables are created automatically on the first run of `main.py`; you only need
-   the database itself to exist and the credentials to be valid.
-
-## Usage
-
-### Running the Agent
-
-Ensure that *Slay the Spire* is running and that the Communication Mod is set to run middleman_process.py
-
-Start the middleman_process.py from the Communication Mod
-
-Run the main script to start training the PPO agent:
-
-This will start the training loop, during which the agent will interact with the game, receive game states, make decisions, and learn over time.
-
-The model will periodically save its progress to a file named maskable_ppo_slay_the_spire.zip.
-
-In order to use multiple Slay The Spire Environments, first ensure that all games are running `middleman_process.py` through the communication mod
-
-Then edit `num_envs` in the main process and set it equal to the number of game instances you have open, then just run `main.py`
-
-## Customization
-
-### Training Hyperparameters
-
-You can adjust PPO training hyperparameters such as `learning_rate`, `gamma`, and `ent_coef` inside the `main.py` and `run_env.py` files when initializing the PPO model. Note that there are two instances of the model, one is a central model defined in `main.py` which gets updated with experiences that are collected from multiple environments. The model defined in `run_env.py` is a separate environments isolated instance of the model to interact with the game in order to avoid conflicts and interference from other environments.
-
-### Model Checkpoints
-
-The model will automatically save after a defined number of steps `n_steps`, increasing `n_steps` increases data available per update leading to more stability during training, but also will require more memory.
-
-## Training the Agent
-
-The training loop consists of the agent receiving game states via socket communication, using its policy network to decide on the next action, and then stepping through the environment. Rewards are given based on the agent's performance in the game, which helps it learn the optimal strategies over time.
-
-- **Episodes**: Each episode consists of the agent starting from the beginning of the game and playing until the episode ends (e.g., the agent wins, loses, or reaches a terminal state).
-- **Rewards**: The agent is given positive rewards for actions that progress the game (e.g., defeating monsters, acquiring relics) and negative rewards for detrimental actions (e.g., taking damage).
-
-## Observation and Action Spaces
-
-### Observation Space
-
-The observation space is a dictionary composed of multiple components, each corresponding to different aspects of the game state:
-
-- `player`: Health, block, energy, and active powers of the player.
-- `hand`: Information about the cards in the player's hand.
-- `monsters`: Information about the current enemies, including health, block, and intents.
-- `deck`: Information about the player's deck, including card details.
-- `potion`: Information about available potions.
-- `relics`: Information about relics in possession.
-- `screen`: Information about the current game screen (e.g., combat, shop).
-- `extra_info`: Additional game information (e.g., gold, floor number).
-
-### Action Space
-
-The action space is a discrete space representing various in-game actions such as:
-
-- Starting the game
-- Playing a card
-- Using or discarding a potion
-- Proceeding to the next screen
-- Making choices in events
-
-## Reward Function
-
-The reward function is critical for guiding the agent's learning process. Rewards are given for various in-game achievements and penalized for undesirable outcomes:
-
-- **Positive Rewards**: Defeating monsters, using potions, advancing floors, acquiring relics, and adding cards to the deck.
-- **Negative Rewards**: Taking damage, discarding valuable resources, or losing gold.
-
-The reward function is designed to incentivize the agent to learn optimal strategies over time.
-
-## Model Checkpointing
-
-The model is saved after a specified number of episodes during training. By default, the model is saved after each episode to a file called `ppo_slay_the_spire.zip`. You can adjust this frequency in the main script to optimize for training performance.
-
-## Performance Metrics
-
-- The agent's performance is tracked by logging the total rewards and episode lengths. These metrics are plotted periodically during training and saved as `performance_metrics.png`.
-- Other data is stored in the database and stores each game instance with a start and end time, class chosen, floor reached and how many bosses the agent was able to defeat.
-- Cards that the agent chooses during card selection is also stored along with the other choices the agent had in order to develop a card ranking based on the agents preferences
-- Card performance statistics are also recorded which include how many times the card is picked, the average floor the agent reaches with that card in its deck, the cards winrate and how many games the card was featured in
-
-## Next Steps
-
-- Modifying the game to remove graphics rendering in order to reduce load on processor, which allows for an increased number of concurrent environments running on one machine
-- Introducing a imitation learning approach where the agent can learn off of gamplay from another source for pre-training 
-- Implementing more detailed data analysis in order to visualize things like what specific cards the agent tends to prefer, how many elites does it defeat per run, enemies it loses to the most etc.
-
-## Acknowledgements
-
-This project was built with a large help from the following technologies:
-
-- **Stable Baselines3** - A set of improved reinforcement learning algorithms in Python.
-- **Slay the Spire** - The game used as the environment for this project.
-- **Communication Mod** - Used for enabling communication between *Slay the Spire* and the agent via socket.
-  
-## Notes
-
-This project is my first attempt at creating a full RL agent on a custom environment so feel free to raise any issues on the repository if you encounter any problems
+# Slay the Spire 2 PPO Agent
+
+A reinforcement learning agent that plays *Slay the Spire 2*, trained with
+Maskable PPO across many game instances at once. One policy plays all five
+characters (Ironclad, Silent, Defect, Regent, Necrobinder).
+
+The original *Slay the Spire* (STS1) version, which played through
+CommunicationMod and a rendered game under Xvfb, is on the
+[`legacy/sts-1`](../../tree/legacy/sts-1) branch.
+
+## How it works
+
+```
+ actor containers (x N)                         learner              coordinator (Go)
+ ┌───────────────────────────────┐   rollouts   ┌───────────┐ weights ┌───────────┐
+ │ headless STS2 ── JSON lines ──│─── gRPC ────>│ PPO update│───────> │ latest     │
+ │ (sts2-cli host)   policy      │              └───────────┘         │ version    │
+ │                 <─────────────│──────────── new weights ───────────│            │
+ └───────────────────────────────┘                                    └───────────┘
+```
+
+- **The game runs headless.** [sts2-cli](https://github.com/wuhao21/sts2-cli)
+  (MIT) loads the game's own logic (`sts2.dll`) in a .NET process with the
+  Godot engine stubbed out: no rendering, no Steam client, no network. It talks
+  JSON over stdin/stdout, about 170 decisions per second per game, in ~65 MB.
+  It's built from your installed copy of the game; no game files are in any
+  image (`docker/sts2/`).
+- **Actors** (`run_actor.py`, `environment/run_env.py`) play runs with the
+  current policy and send each 2048-step rollout to the learner.
+- **The learner** (`learner_server.py`) trains on one rollout per actor, then
+  publishes the new weights to the **coordinator** (`coordinator/`, Go), which
+  hands them to the actors.
+- **To watch it play**, `play_live.py` drives the real, rendered game through
+  the [STS2MCP](https://github.com/Gennadiyev/STS2MCP) mod (MIT) with the same
+  observation code as training.
+
+## The environment (`sts2/`)
+
+**Observations** (`sts2/env.py`): fixed-size groups of rows, each row with id
+columns and numeric columns: the player and run (`global`), the hand, enemies
+(with intents and powers), player powers, Defect's orbs, potions, relics, the
+deck, and the options of the current non-combat decision (map nodes, reward
+cards, shop items, event and rest options). Character-specific mechanics have
+their own features (orbs, Regent's stars, Necrobinder's Osty), zero for the
+other characters.
+
+**Network** (`sts2/features.py`): every id (card, monster, relic, power...)
+goes through a learned embedding shared everywhere that vocabulary appears;
+each row becomes a fixed-width vector; slot-ordered groups (hand, enemies,
+options) stay in order, because actions point at slots, and sets (deck,
+relics, powers) are mean- and max-pooled. Then 256x256 policy and value heads.
+
+**Vocabularies** (`sts2/vocab.json`): generated from the game's own text
+tables by `scripts/generate_sts2_vocab.py`, so every card, relic, potion,
+power, monster, orb, enchantment, affliction and event option has an id.
+Append-only, so a game patch adds names without renumbering a trained policy.
+
+**Actions**: one flat, masked discrete space of 148: end turn, play hand card
+h at target t, use or discard potion p, choose option k, skip/leave, confirm.
+Multi-card selections are one pick per step. The mask comes from the payload
+(`can_play`, reachable map nodes, locked options, affordability); the game
+refuses about 1 action in 3,000, and a refused action is retried without it.
+
+**Rewards**: +1 per floor, +3 per act, +10 for a win, -1 for dying; +1 per
+fight won and the share of enemy HP removed; -3x the share of HP lost, +1x
+healed; -0.005 per action.
+
+## Running it
+
+Everything runs in Docker. See [docs/runbook.md](docs/runbook.md) for setup,
+tests, training, fault tests and watching the policy play the real game. In
+short:
+
+```bash
+mkdir -p run/sts2-host run/sts2-random run/sts2-actors run/sts2-learner
+docker compose run --rm --build sts2-build              # build the headless game from your install
+NUM_ACTORS=24 docker compose up -d --build learner actor
+docker compose run --rm live                            # watch it play (needs the mod, see the runbook)
+```
+
+Requires *Slay the Spire 2* on Steam (Linux build, pinned to v0.111.1 in
+`docker/sts2/game-version.sh`) and Docker.

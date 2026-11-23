@@ -9,27 +9,32 @@ from dataclasses import dataclass
 
 from sb3_contrib.ppo_mask import MaskablePPO
 
-from slay_the_spire_env import SlayTheSpireEnv
+from sts2.env import Sts2Env
+from sts2.features import Sts2Extractor
 
 
 @dataclass(frozen=True)
 class TrainingConfig:
     # Used by actors: how long a rollout is, and how advantages/returns are computed.
     n_steps: int = 2048
-    gamma: float = 0.97
+    # A run is several hundred decisions, and a fight's payoff (the floor
+    # reward) lands well after the cards that won it, so look further ahead.
+    gamma: float = 0.99
     gae_lambda: float = 0.95
     # Actors multiply every reward by this, so returns come out around unit size
-    # and the value loss doesn't swamp the policy's share of the gradient.
-    reward_scale: float = 0.02  # raw returns have a std of ~45 (measured 2026-11-14)
+    # and the value loss doesn't swamp the policy's share of the gradient. The
+    # raw rewards (sts2/env.py) are already about unit size per floor.
+    reward_scale: float = 0.2
     # Used by the learner's update.
-    learning_rate: float = 3e-4
-    ent_coef: float = 0.03
-    clip_range: float = 0.3
-    n_epochs: int = 10
-    batch_size: int = 64
-    # Hidden layer sizes. The weights only fit a network with the same layers.
-    policy_layers: tuple = (64, 64)
-    value_layers: tuple = (64, 64)
+    learning_rate: float = 2.5e-4
+    ent_coef: float = 0.01
+    clip_range: float = 0.2
+    n_epochs: int = 4
+    batch_size: int = 512
+    # Hidden layer sizes after the feature extractor (sts2/features.py). The
+    # weights only fit a network with the same layers.
+    policy_layers: tuple = (256, 256)
+    value_layers: tuple = (256, 256)
 
 
 def make_model(config, env=None, device="cpu"):
@@ -39,7 +44,7 @@ def make_model(config, env=None, device="cpu"):
     """
     return MaskablePPO(
         "MultiInputPolicy",
-        env if env is not None else SlayTheSpireEnv({}),
+        env if env is not None else Sts2Env(),
         n_steps=config.n_steps,
         gamma=config.gamma,
         gae_lambda=config.gae_lambda,
@@ -49,6 +54,7 @@ def make_model(config, env=None, device="cpu"):
         n_epochs=config.n_epochs,
         batch_size=config.batch_size,
         policy_kwargs={"net_arch": {"pi": list(config.policy_layers),
-                                    "vf": list(config.value_layers)}},
+                                    "vf": list(config.value_layers)},
+                       "features_extractor_class": Sts2Extractor},
         device=device,
     )

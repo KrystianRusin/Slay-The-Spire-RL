@@ -7,13 +7,13 @@ import torch as th
 from sb3_contrib.ppo_mask import MaskablePPO
 
 from model.model_utils import ppo_loss, train
-from slay_the_spire_env import SlayTheSpireEnv
+from sts2.env import Sts2Env
 
 from tests.rollouts import fill, make_buffer
 
 
 def make_model():
-    return MaskablePPO("MultiInputPolicy", SlayTheSpireEnv({}), device="cpu", seed=0)
+    return MaskablePPO("MultiInputPolicy", Sts2Env(), device="cpu", seed=0)
 
 
 @pytest.fixture(scope="module")

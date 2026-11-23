@@ -1,4 +1,4 @@
-"""Run one actor: play the game through the middleman and hand off rollouts.
+"""Run one actor: play STS2 on the headless host and hand off rollouts.
 
 With LEARNER_ADDR and COORDINATOR_ADDR set, the actor fetches its starting
 weights from the coordinator, submits each finished rollout to the learner over
@@ -11,7 +11,9 @@ The learner also sends the TrainingConfig (rollout length, gamma, network
 shape), so the actor has no settings of its own. With no learner it uses the
 defaults in model/policy.py.
 
-Env: LEARNER_ADDR and COORDINATOR_ADDR (host:port), STS_MIDDLEMAN_PORT [9999], STS_ACTOR_ID [hostname].
+Env: LEARNER_ADDR and COORDINATOR_ADDR (host:port), STS_ACTOR_ID [hostname],
+STS2_HOST_DLL (set by the image's entrypoint), STS2_ASCENSION [0],
+STS2_EPISODE_LOG [episodes.jsonl in the working directory].
 """
 import os
 import socket
@@ -69,12 +71,13 @@ def main():
         sink = LoggingSink()
 
     run_environment(
-        env_id=0,
-        port=int(os.environ.get("STS_MIDDLEMAN_PORT", "9999")),
+        env_id=actor_id,
         experience_queue=sink,
         config=config,
         initial_state_dict=initial_state_dict,
         next_weights=next_weights,
+        ascension=int(os.environ.get("STS2_ASCENSION", "0")),
+        episode_log=os.environ.get("STS2_EPISODE_LOG", "episodes.jsonl"),
     )
 
 

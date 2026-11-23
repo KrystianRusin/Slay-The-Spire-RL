@@ -1,0 +1,597 @@
+{
+  "type": "decision",
+  "decision": "shop",
+  "context": {
+    "act": 1,
+    "act_name": "Overgrowth",
+    "floor": 6,
+    "room_type": "Shop",
+    "boss": {
+      "id": "THE_KIN_BOSS",
+      "name": "Kin Priest"
+    }
+  },
+  "cards": [
+    {
+      "index": 0,
+      "name": "Reap",
+      "type": "Attack",
+      "rarity": "Common",
+      "card_cost": 3,
+      "description": "Deal {Damage:diff()} damage.",
+      "stats": {
+        "damage": 27
+      },
+      "keywords": [
+        "Retain"
+      ],
+      "after_upgrade": {
+        "cost": 3,
+        "stats": {
+          "damage": 33
+        },
+        "description": "Deal {Damage:diff()} damage.",
+        "added_keywords": null,
+        "removed_keywords": null
+      },
+      "cost": 51,
+      "is_stocked": true,
+      "on_sale": false
+    },
+    {
+      "index": 1,
+      "name": "Defile",
+      "type": "Attack",
+      "rarity": "Common",
+      "card_cost": 1,
+      "description": "Deal {Damage:diff()} damage.",
+      "stats": {
+        "damage": 13
+      },
+      "keywords": [
+        "Ethereal"
+      ],
+      "after_upgrade": {
+        "cost": 1,
+        "stats": {
+          "damage": 17
+        },
+        "description": "Deal {Damage:diff()} damage.",
+        "added_keywords": null,
+        "removed_keywords": null
+      },
+      "cost": 51,
+      "is_stocked": true,
+      "on_sale": false
+    },
+    {
+      "index": 2,
+      "name": "Afterlife",
+      "type": "Skill",
+      "rarity": "Common",
+      "card_cost": 1,
+      "description": "Summon {Summon:diff()}.",
+      "stats": {
+        "summon": 6
+      },
+      "keywords": [
+        "Exhaust"
+      ],
+      "after_upgrade": {
+        "cost": 1,
+        "stats": {
+          "summon": 9
+        },
+        "description": "Summon {Summon:diff()}.",
+        "added_keywords": null,
+        "removed_keywords": null
+      },
+      "cost": 52,
+      "is_stocked": true,
+      "on_sale": false
+    },
+    {
+      "index": 3,
+      "name": "Putrefy",
+      "type": "Skill",
+      "rarity": "Uncommon",
+      "card_cost": 1,
+      "description": "Apply {Power:diff()} Weak.\nApply {Power:diff()} Vulnerable.",
+      "stats": {
+        "power": 2
+      },
+      "keywords": [
+        "Exhaust"
+      ],
+      "after_upgrade": {
+        "cost": 1,
+        "stats": {
+          "power": 3
+        },
+        "description": "Apply {Power:diff()} Weak.\nApply {Power:diff()} Vulnerable.",
+        "added_keywords": null,
+        "removed_keywords": null
+      },
+      "cost": 73,
+      "is_stocked": true,
+      "on_sale": false
+    },
+    {
+      "index": 4,
+      "name": "Demesne",
+      "type": "Power",
+      "rarity": "Rare",
+      "card_cost": 3,
+      "description": "At the start of your turn, gain {Energy:energyIcons()} and draw {Cards:diff()} additional {Cards:plural:card|cards}.",
+      "stats": {
+        "energy": 1,
+        "cards": 1
+      },
+      "keywords": [
+        "Ethereal"
+      ],
+      "after_upgrade": {
+        "cost": 2,
+        "stats": {
+          "energy": 1,
+          "cards": 1
+        },
+        "description": "At the start of your turn, gain {Energy:energyIcons()} and draw {Cards:diff()} additional {Cards:plural:card|cards}.",
+        "added_keywords": null,
+        "removed_keywords": null
+      },
+      "cost": 76,
+      "is_stocked": true,
+      "on_sale": true
+    },
+    {
+      "index": 5,
+      "name": "Ultimate Defend",
+      "type": "Skill",
+      "rarity": "Uncommon",
+      "card_cost": 1,
+      "description": "Gain {Block:diff()} Block.",
+      "stats": {
+        "block": 11
+      },
+      "keywords": null,
+      "after_upgrade": {
+        "cost": 1,
+        "stats": {
+          "block": 15
+        },
+        "description": "Gain {Block:diff()} Block.",
+        "added_keywords": null,
+        "removed_keywords": null
+      },
+      "cost": 83,
+      "is_stocked": true,
+      "on_sale": false
+    },
+    {
+      "index": 6,
+      "name": "Secret Weapon",
+      "type": "Skill",
+      "rarity": "Rare",
+      "card_cost": 0,
+      "description": "Put an Attack from your Draw Pile into your Hand.",
+      "stats": null,
+      "keywords": [
+        "Exhaust"
+      ],
+      "after_upgrade": {
+        "cost": 0,
+        "stats": null,
+        "description": "Put an Attack from your Draw Pile into your Hand.",
+        "added_keywords": null,
+        "removed_keywords": [
+          "Exhaust"
+        ]
+      },
+      "cost": 177,
+      "is_stocked": true,
+      "on_sale": false
+    }
+  ],
+  "relics": [
+    {
+      "index": 0,
+      "name": "Unsettling Lamp",
+      "description": "Each combat, the first time you play a card that Debuffs an enemy, double its effect.",
+      "cost": 287,
+      "is_stocked": true
+    },
+    {
+      "index": 1,
+      "name": "War Paint",
+      "description": "Upon pickup, Upgrade {Cards} random {Cards:plural:Skill|Skills}.",
+      "cost": 151,
+      "is_stocked": true
+    },
+    {
+      "index": 2,
+      "name": "Dragon Fruit",
+      "description": "Whenever you gain Gold, raise your Max HP by {MaxHp}.",
+      "cost": 210,
+      "is_stocked": true
+    }
+  ],
+  "potions": [
+    {
+      "index": 0,
+      "name": "Duplicator",
+      "description": "This turn, your next card is played an extra time.",
+      "cost": 75,
+      "is_stocked": true
+    },
+    {
+      "index": 1,
+      "name": "Dexterity Potion",
+      "description": "Gain {DexterityPower} Dexterity.",
+      "cost": 50,
+      "is_stocked": true
+    },
+    {
+      "index": 2,
+      "name": "Fysh Oil",
+      "description": "Gain {StrengthPower} Strength and {DexterityPower} Dexterity.",
+      "cost": 75,
+      "is_stocked": true
+    }
+  ],
+  "card_removal_cost": 75,
+  "player": {
+    "name": "The Necrobinder",
+    "hp": 20,
+    "max_hp": 66,
+    "block": 0,
+    "gold": 157,
+    "relics": [
+      {
+        "name": "Bound Phylactery",
+        "description": "At the start of your turn, Summon {Summon}.",
+        "vars": {
+          "Summon": 1
+        }
+      },
+      {
+        "name": "Kaleidoscope",
+        "description": "Upon pickup, obtain {Cards} {Cards:plural:card reward|card rewards} from other characters.",
+        "vars": {
+          "Cards": 2
+        }
+      }
+    ],
+    "potions": [],
+    "deck_size": 15,
+    "deck": [
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.STRIKE_NECROBINDER",
+        "name": "Strike",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.",
+        "stats": {
+          "damage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 9
+          },
+          "description": "Deal {Damage:diff()} damage.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DEFEND_NECROBINDER",
+        "name": "Defend",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.",
+        "stats": {
+          "block": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 8
+          },
+          "description": "Gain {Block:diff()} Block.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.BODYGUARD",
+        "name": "Bodyguard",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Summon {Summon:diff()}.",
+        "stats": {
+          "summon": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "summon": 7
+          },
+          "description": "Summon {Summon:diff()}.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.UNLEASH",
+        "name": "Unleash",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Osty deals {CalculatedDamage:diff()} damage.\nDeals additional damage equal to Osty's current HP.",
+        "stats": {
+          "calculationbase": 6,
+          "extradamage": 1,
+          "calculateddamage": 6
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "calculationbase": 9,
+            "extradamage": 1,
+            "calculateddamage": 9
+          },
+          "description": "Osty deals {CalculatedDamage:diff()} damage.\nDeals additional damage equal to Osty's current HP.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.TRUE_GRIT",
+        "name": "True Grit",
+        "cost": 1,
+        "type": "Skill",
+        "upgraded": false,
+        "description": "Gain {Block:diff()} Block.\nExhaust 1 card{IfUpgraded:show:| at random}.",
+        "stats": {
+          "block": 7
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "block": 9
+          },
+          "description": "Gain {Block:diff()} Block.\nExhaust 1 card{IfUpgraded:show:| at random}.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.KNOCKOUT_BLOW",
+        "name": "Knockout Blow",
+        "cost": 3,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.\nIf this kills an enemy, gain {Stars:starIcons()}.",
+        "stats": {
+          "damage": 30,
+          "stars": 5
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 3,
+          "stats": {
+            "damage": 38,
+            "stars": 5
+          },
+          "description": "Deal {Damage:diff()} damage.\nIf this kills an enemy, gain {Stars:starIcons()}.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.SOW",
+        "name": "Sow",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage to ALL enemies.",
+        "stats": {
+          "damage": 8
+        },
+        "keywords": [
+          "Retain"
+        ],
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 11
+          },
+          "description": "Deal {Damage:diff()} damage to ALL enemies.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.DRAIN_POWER",
+        "name": "Drain Power",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.\nUpgrade {Cards:diff()} random {Cards:plural:card|cards} in your Discard Pile.",
+        "stats": {
+          "damage": 10,
+          "cards": 2
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 12,
+            "cards": 3
+          },
+          "description": "Deal {Damage:diff()} damage.\nUpgrade {Cards:diff()} random {Cards:plural:card|cards} in your Discard Pile.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      },
+      {
+        "id": "CARD.REAVE",
+        "name": "Reave",
+        "cost": 1,
+        "type": "Attack",
+        "upgraded": false,
+        "description": "Deal {Damage:diff()} damage.\nAdd a {IfUpgraded:show:Soul+|Soul} into your Draw Pile.",
+        "stats": {
+          "damage": 10,
+          "cards": 1
+        },
+        "keywords": null,
+        "after_upgrade": {
+          "cost": 1,
+          "stats": {
+            "damage": 13,
+            "cards": 1
+          },
+          "description": "Deal {Damage:diff()} damage.\nAdd a {IfUpgraded:show:Soul+|Soul} into your Draw Pile.",
+          "added_keywords": null,
+          "removed_keywords": null
+        }
+      }
+    ]
+  }
+}

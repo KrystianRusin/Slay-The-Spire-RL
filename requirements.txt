@@ -21,17 +21,11 @@ stable_baselines3==2.9.0
 sb3_contrib==2.9.0
 torch==2.11.0
 
-# --- Numerics and plotting ---
+# --- Numerics ---
 numpy==2.5.3
-matplotlib==3.11.1
 
 # --- Actor <-> learner RPC (rpc/learner.proto) ---
 # grpcio-tools generates the Python code from the .proto at image build time.
 grpcio==1.85.1
 grpcio-tools==1.85.1
 protobuf==7.36.2
-
-# --- Persistence ---
-SQLAlchemy==2.0.52
-psycopg2-binary==2.9.13
-python-dotenv==1.2.3

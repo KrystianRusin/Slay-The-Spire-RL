@@ -1,30 +1,39 @@
-# Local stack.
+# Local stack: headless Slay the Spire 2 + PPO training.
 #
-#   game   headless game + random bot, to check the game runs
-#            docker compose up --build game
-#            tail -f run/game/random_bot.log      # steps, steps/s, floor
-#   actor + learner + coordinator
-#          headless game + middleman + RL actor, sending rollouts to the learner
-#          over gRPC; the learner trains on them and publishes each new version
-#          of the weights to the coordinator, which hands them to the actors
-#          (compose starts the coordinator for you)
-#            mkdir -p run/actors run/learner      # else docker creates them owned by root
-#            NUM_ACTORS=2 docker compose up --build learner actor
-#            tail -f run/actors/*/game.log        # one folder per actor, named by its id
-#          Set the actor count with NUM_ACTORS, not --scale: the learner waits for
-#          exactly NUM_ACTORS rollouts per round, and --scale doesn't tell it.
+#   1. Build the game host once (and again whenever the game updates):
+#        mkdir -p run/sts2-host run/sts2-random run/sts2-actors run/sts2-learner   # else docker creates them owned by root
+#        docker compose run --rm --build sts2-build
+#   2. Check the game runs, with a random bot:
+#        docker compose up --build sts2-random
+#        cat run/sts2-random/summary.json
+#   3. Train: actors play with the current policy and send rollouts to the
+#      learner over gRPC; the learner trains on each round and publishes the
+#      new weights to the coordinator, which hands them to the actors
+#      (compose starts the coordinator for you):
+#        NUM_ACTORS=16 docker compose up --build learner actor
+#        tail -f run/sts2-actors/*/episodes.jsonl   # one folder per actor, named by its id
+#      Set the actor count with NUM_ACTORS, not --scale: the learner waits for
+#      exactly NUM_ACTORS rollouts per round, and --scale doesn't tell it.
+#   4. Watch the trained policy play the real game (mod setup: docs/runbook.md):
+#        docker compose run --rm live
 #
-# Add -f compose.norender.yaml after -f compose.yaml to run without drawing at 10x.
-# STS_GAME_DIR points at your Slay the Spire install (must contain jre-linux/
-# and mods/ with BaseMod + CommunicationMod). It is mounted read-only.
+# STS2_GAME_DIR points at your Slay the Spire 2 install (the folder with
+# release_info.json and SlayTheSpire2.pck). It is mounted read-only. Steam
+# updates the game in place, so set it to update only on launch; the runtime
+# refuses to start if the game no longer matches the build.
 
-x-sts-instance: &sts-instance
+name: sts2   # its own compose project: containers, network and names apart from any STS1 stack
+
+x-sts2-game: &sts2-game ${STS2_GAME_DIR:-${HOME}/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Slay the Spire 2}:/game:ro
+
+x-sts2-runtime: &sts2-runtime
   build:
     context: .
-    dockerfile: docker/game/Dockerfile
+    dockerfile: docker/sts2/Dockerfile
+    target: runtime
     additional_contexts:
       coordinator: service:coordinator  # the Go binary, so tests can run the real thing
-  image: sts-game:dev
+  image: sts2-game:dev
   init: true                          # tini as PID 1, so child processes get reaped and signals work
   user: "${UID:-1000}:${GID:-1000}"   # files in run/ stay owned by you, not root
 
@@ -40,30 +49,50 @@ services:
     environment:
       COORDINATOR_PORT: "50052"
 
-  game:
-    <<: *sts-instance
+  sts2-build:
+    # One-shot: compiles the headless host from the game files into run/sts2-host.
+    build:
+      context: .
+      dockerfile: docker/sts2/Dockerfile
+      target: builder
+    image: sts2-builder:dev
+    user: "${UID:-1000}:${GID:-1000}"
     volumes:
-      - ${STS_GAME_DIR:-${HOME}/SlayTheSpire}:/game:ro
-      - ./run/game:/instance
+      - *sts2-game
+      - ./run/sts2-host:/out
     environment:
-      RANDOM_BOT_TRACE: ${RANDOM_BOT_TRACE:-}
+      STS2_ALLOW_ANY_VERSION: ${STS2_ALLOW_ANY_VERSION:-0}
+
+  sts2-random:
+    <<: *sts2-runtime
+    # The game needs nothing from the network: no Steam, no telemetry.
+    network_mode: none
+    volumes:
+      - *sts2-game
+      - ./run/sts2-host:/sts2-host:ro
+      - ./run/sts2-random:/instance
+    environment:
+      STS2_RUNS: ${STS2_RUNS:-10}
+      STS2_CHARACTER: ${STS2_CHARACTER:-random}
+      STS2_TRACE: ${STS2_TRACE:-}
+      STS2_ALLOW_ANY_VERSION: ${STS2_ALLOW_ANY_VERSION:-0}
 
   actor:
-    <<: *sts-instance
+    <<: *sts2-runtime
+    command: ["python3", "/opt/sts/app/run_actor.py"]
     volumes:
-      - ${STS_GAME_DIR:-${HOME}/SlayTheSpire}:/game:ro
-      - ./run/actors:/instances
+      - *sts2-game
+      - ./run/sts2-host:/sts2-host:ro
+      - ./run/sts2-actors:/instances
     environment:
-      STS_INSTANCE_ROOT: /instances  # each container uses /instances/<its hostname>
-      STS_BOT_CMD: python3 /opt/sts/app/middleman_process.py
-      STS_ACTOR_CMD: python3 /opt/sts/app/run_actor.py
-      LEARNER_ADDR: learner:50051  # compose gives each service a hostname = its name
+      STS2_INSTANCE_ROOT: /instances  # each container uses /instances/<its hostname>
+      LEARNER_ADDR: learner:50051     # compose gives each service a hostname = its name
       COORDINATOR_ADDR: coordinator:50052
-      STS_MIDDLEMAN_PORT: "9999"   # one game per container, so a fixed port is safe
-      STS_TRACK_DB: "0"            # no Postgres in this stack
-      STS_PLOT: "0"
-      STS_FPS: "120"               # measured best trade-off of game speed against CPU
-      MIDDLEMAN_VERBOSE: ${MIDDLEMAN_VERBOSE:-}  # 1 = log every state and command
+      STS2_ASCENSION: ${STS2_ASCENSION:-0}
+      STS2_ALLOW_ANY_VERSION: ${STS2_ALLOW_ANY_VERSION:-0}
+      # One game and one policy per container: keep torch to one thread so
+      # many actors share the CPU without fighting over it.
+      OMP_NUM_THREADS: "1"
     deploy:
       replicas: ${NUM_ACTORS:-1}
     depends_on:
@@ -71,12 +100,12 @@ services:
       - coordinator
 
   learner:
-    <<: *sts-instance
-    # Same image, but no game: skip the game-setup entrypoint and run the learner.
+    <<: *sts2-runtime
+    # Same image, but no game: skip the game-check entrypoint and run the learner.
     entrypoint: ["python3", "/opt/sts/app/learner_server.py"]
     restart: unless-stopped        # after a crash it comes back and resumes from its checkpoint
     volumes:
-      - ./run/learner:/learner     # checkpoints survive the container; delete them to start over
+      - ./run/sts2-learner:/learner     # checkpoints survive the container; delete them to start over
     depends_on:
       - coordinator
     environment:
@@ -85,3 +114,17 @@ services:
       LEARNER_PORT: "50051"
       LEARNER_NUM_ACTORS: ${NUM_ACTORS:-1}  # rollouts per training round: one per actor
       LEARNER_N_STEPS: ${LEARNER_N_STEPS:-}         # shorter rollouts for quick test runs
+
+  live:
+    # The trained policy plays the real, rendered game, through the STS2MCP mod
+    # on localhost:15526 (see docs/runbook.md). Host networking, so localhost
+    # is the desktop's, where the game is listening.
+    #   docker compose run --rm live              # one run as a random character, then stops
+    #   docker compose run --rm live --character Defect --runs 3 --delay 1
+    <<: *sts2-runtime
+    entrypoint: ["python3", "/opt/sts/app/play_live.py", "--checkpoints", "/learner/checkpoints",
+                 "--events-table", "/sts2-host/sts2-cli/localization_eng/events.json"]
+    network_mode: host
+    volumes:
+      - ./run/sts2-learner:/learner:ro
+      - ./run/sts2-host:/sts2-host:ro
