@@ -17,6 +17,11 @@
 #   4. Watch the trained policy play the real game (mod setup: docs/runbook.md):
 #        docker compose run --rm live
 #
+# A long training run can go on while you develop: scripts/train.sh runs this
+# same file as a separate project (sts2-train) with its own frozen image tag
+# (STS2_TAG=train) and its own run folder (STS2_RUN_DIR=./run/train), so dev
+# stacks, rebuilds and tests don't touch it.
+#
 # STS2_GAME_DIR points at your Slay the Spire 2 install (the folder with
 # release_info.json and SlayTheSpire2.pck). It is mounted read-only. Steam
 # updates the game in place, so set it to update only on launch; the runtime
@@ -33,7 +38,7 @@ x-sts2-runtime: &sts2-runtime
     target: runtime
     additional_contexts:
       coordinator: service:coordinator  # the Go binary, so tests can run the real thing
-  image: sts2-game:dev
+  image: sts2-game:${STS2_TAG:-dev}
   init: true                          # tini as PID 1, so child processes get reaped and signals work
   user: "${UID:-1000}:${GID:-1000}"   # files in run/ stay owned by you, not root
 
@@ -43,7 +48,7 @@ services:
     build:
       context: .
       dockerfile: docker/coordinator/Dockerfile
-    image: sts-coordinator:dev
+    image: sts-coordinator:${STS2_TAG:-dev}
     init: true
     restart: unless-stopped        # it holds nothing on disk; the learner re-publishes to it
     environment:
@@ -83,7 +88,7 @@ services:
     volumes:
       - *sts2-game
       - ./run/sts2-host:/sts2-host:ro
-      - ./run/sts2-actors:/instances
+      - ${STS2_RUN_DIR:-./run}/sts2-actors:/instances
     environment:
       STS2_INSTANCE_ROOT: /instances  # each container uses /instances/<its hostname>
       LEARNER_ADDR: learner:50051     # compose gives each service a hostname = its name
@@ -105,7 +110,7 @@ services:
     entrypoint: ["python3", "/opt/sts/app/learner_server.py"]
     restart: unless-stopped        # after a crash it comes back and resumes from its checkpoint
     volumes:
-      - ./run/sts2-learner:/learner     # checkpoints survive the container; delete them to start over
+      - ${STS2_RUN_DIR:-./run}/sts2-learner:/learner     # checkpoints survive the container; delete them to start over
     depends_on:
       - coordinator
     environment:
@@ -126,5 +131,5 @@ services:
                  "--events-table", "/sts2-host/sts2-cli/localization_eng/events.json"]
     network_mode: host
     volumes:
-      - ./run/sts2-learner:/learner:ro
+      - ${STS2_RUN_DIR:-./run}/sts2-learner:/learner:ro
       - ./run/sts2-host:/sts2-host:ro

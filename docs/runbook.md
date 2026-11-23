@@ -101,6 +101,31 @@ print('last 500 runs: mean floor', sum(r.get('floor') or 0 for r in recent) / le
       ' wins', sum(r['outcome'] == 'victory' for r in recent))"
 ```
 
+## 2b. A long training run while you develop
+
+`scripts/train.sh` runs a training stack that development can't disturb: its
+own Compose project (`sts2-train`), its own frozen images
+(`sts2-game:train`, `sts-coordinator:train`) and its own folders
+(`run/train/`). Dev commands (`docker compose up --build ...`) keep using
+project `sts2`, the `:dev` images and `run/`, next to it.
+
+```bash
+scripts/train.sh start      # 8 actors (NUM_ACTORS=...), resumes from run/train/sts2-learner/checkpoints
+scripts/train.sh status     # containers and the last rounds
+scripts/train.sh logs       # follow the learner
+scripts/train.sh watch      # its newest policy plays the real game (section 5); flags as for live
+scripts/train.sh update     # rebuild the frozen image from your current code and restart on it
+scripts/train.sh stop
+```
+
+- Pipeline work (RPC, coordinator, learner plumbing) doesn't touch the
+  weights: when it's done, `update` moves training onto it and resumes.
+- Changing the observation, actions or network (`sts2/`, `model/policy.py`)
+  makes old checkpoints unusable: the learner refuses to resume. Move
+  `run/train/sts2-learner` aside to start over.
+- It shares the CPU: pause it (`stop`) for throughput measurements and
+  timing-sensitive fault tests.
+
 ## 3. Fault tests
 
 The point is to **predict first**. Before each one, write down:
