@@ -101,3 +101,53 @@ def test_rest_options_use_the_training_ids(option_id, expected):
     assert env.options[0].ids[7] > 0
     assert env.state["options"][0]["option_id"] == expected
     assert game.to_requests(env.commands()[OPTION_BASE]) == [{"action": "choose_rest_option", "index": 0}]
+
+
+def menu_clicks(state, character="Ironclad", game=None):
+    """The menu options LiveGame clicks for state (without a game to click on)."""
+    game = game or LiveGame(log=lambda message: None)
+    clicked = []
+    game.post = lambda body: clicked.append(body.get("option")) or {"status": "ok"}
+    assert game.handle_automatically(state, character)
+    return clicked
+
+
+def test_menus_only_click_toward_a_new_run():
+    assert menu_clicks({"state_type": "menu", "menu_screen": "main",
+                        "options": ["singleplayer", "multiplayer", "compendium", "settings", "quit"]}) == ["singleplayer"]
+    assert menu_clicks({"state_type": "menu", "menu_screen": "singleplayer",
+                        "options": ["standard", "daily", "custom", "back"]}) == ["standard"]
+    assert menu_clicks({"state_type": "menu", "menu_screen": "multiplayer",
+                        "options": ["host", "back"]}) == ["back"]
+
+
+def test_a_menu_without_the_way_forward_is_left_alone(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda seconds: None)
+    # The main menu while it animates in: singleplayer isn't clickable yet.
+    assert menu_clicks({"state_type": "menu", "menu_screen": "main", "options": ["settings", "quit"]}) == []
+    # Settings has no options and the mod can't close it.
+    assert menu_clicks({"state_type": "menu", "menu_screen": "settings"}) == []
+
+
+def test_a_run_in_progress_is_continued():
+    assert menu_clicks({"state_type": "menu", "menu_screen": "main",
+                        "options": ["continue", "abandon_run", "settings", "quit"]}) == ["continue"]
+
+
+def test_character_select_picks_the_character_then_embarks():
+    game = LiveGame(log=lambda message: None)
+    screen = {"state_type": "menu", "menu_screen": "character_select",
+              "options": [{"name": "IRONCLAD", "enabled": True}, {"name": "DEFECT", "enabled": True},
+                          {"name": "back", "enabled": True}]}
+    assert menu_clicks(screen, "Defect", game) == ["defect"]
+    assert menu_clicks(screen, "Defect", game) == ["embark"]
+
+
+def test_pending_timeline_unlocks_are_mentioned_once_and_the_run_still_starts():
+    said = []
+    game = LiveGame(log=said.append)
+    main = {"state_type": "menu", "menu_screen": "main", "options": ["singleplayer", "settings", "quit"],
+            "blocked_options": [{"name": "timeline", "enabled": False, "reason": "manual_epoch_reveal_required"}]}
+    assert menu_clicks(main, game=game) == ["singleplayer"]
+    assert menu_clicks(main, game=game) == ["singleplayer"]
+    assert sum("Timeline" in line for line in said) == 1

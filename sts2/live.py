@@ -108,6 +108,8 @@ class LiveGame:
         self.act_start = {}     # act -> the total floor count when it began
         self.translate = {}     # what the last payload's host-style indices mean to the mod
         self.picked = None      # character clicked on the character select screen
+        self._last_wait = None  # the last reason printed for being idle
+        self._noticed = set()   # one-off notices already printed
 
     # --- HTTP ------------------------------------------------------------------
 
@@ -126,6 +128,18 @@ class LiveGame:
         time.sleep(self.delay)
         return reply
 
+    def _notice(self, message):
+        """Print a message once per session."""
+        if message not in self._noticed:
+            self.log(f"  (note: {message})")
+            self._noticed.add(message)
+
+    def _waiting(self, why):
+        """Say why we're idle, once per reason rather than every poll."""
+        if why != self._last_wait:
+            self.log(f"  (waiting: {why})")
+            self._last_wait = why
+
     def wait_for_change(self, before, timeout=5.0):
         """Poll until the state differs from before: the game has applied the last action."""
         deadline = time.monotonic() + timeout
@@ -142,22 +156,38 @@ class LiveGame:
         """Click through a screen the headless host resolves on its own. Returns True if it did."""
         kind = s.get("state_type")
         if kind == "menu":
+            # Menus only ever get the clicks that lead to a new run (or back
+            # out of a side screen toward one). Anything else waits: clicking
+            # the first option on offer once opened Settings, which the mod
+            # can't close again.
             options = [o if isinstance(o, str) else o.get("name") for o in s.get("options") or []]
-            options = [o for o in options if o]
+            available = {o.lower() for o in options if o}
             screen = s.get("menu_screen")
-            want = {"main": "singleplayer", "singleplayer": "standard", "tutorial_prompt": "no"}.get(screen)
+            # Timeline unlocks have to be revealed by hand: the mod won't open
+            # the Timeline from automation (it breaks the unlock state). Say so
+            # once; runs still start without them.
+            if any(b.get("reason") == "manual_epoch_reveal_required" for b in s.get("blocked_options") or []):
+                self._notice("New unlocks are waiting in the Timeline. To give the agent them, reveal them "
+                             "yourself (main menu > Timeline) between runs.")
             if screen == "character_select":
                 # The state doesn't say which character is highlighted, so
                 # remember our own click: pick the character, then embark.
-                want = "embark" if self.picked == character else character.upper()
+                want = "embark" if self.picked == character else character.lower()
                 self.picked = character
             else:
                 self.picked = None
-            if want is None or want not in [o.lower() for o in options] + [o.upper() for o in options]:
-                want = "back" if "back" in options else (options[0] if options else None)
-            if want:
+                want = {"main": "singleplayer", "singleplayer": "standard", "tutorial_prompt": "no"}.get(screen)
+                if screen == "main" and "singleplayer" not in available and "continue" in available:
+                    want = "continue"  # a run is already in progress: pick it up
+                if want is None and "back" in available:
+                    want = "back"  # a side menu (multiplayer, profiles, ...): head back to the main menu
+            if want and want in available | ({"embark"} if screen == "character_select" else set()):
                 self.log(f"  [menu] {screen}: {want}")
                 self.post({"action": "menu_select", "option": want})
+            else:
+                self._waiting(f"on the {screen!r} screen, which the agent doesn't navigate: "
+                              "go back to the main menu in the game and it will carry on")
+                time.sleep(1)
             return True
         if kind == "game_over":
             self.post({"action": "menu_select", "option": "main_menu"})

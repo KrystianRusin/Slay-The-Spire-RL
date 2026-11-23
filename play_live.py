@@ -159,9 +159,12 @@ def main():
             continue
         if not in_run:
             in_run = True
-            env.begin_run(character)
+            # The game picks the ascension (whatever its character select is
+            # set to; the mod can't change it), so read it back for the policy.
+            ascension = int((s.get("run") or {}).get("ascension") or 0)
+            env.begin_run(character, ascension)
             game.act_start.clear()
-            print(f"\n=== New run: {character}, policy v{state['version']} ===", flush=True)
+            print(f"\n=== New run: {character}, ascension {ascension}, policy v{state['version']} ===", flush=True)
 
         # The same screen again (e.g. after a refused action) keeps its refusals.
         if payload != last_payload:
